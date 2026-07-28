@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#FCFDFB">
+<title>视觉模型直连探针</title>
+<style>
+:root{
+  --paper:#FCFDFB; --card:#FFFFFF; --ink:#141A17; --ink-soft:#4F574F; --ink-faint:#7C847D;
+  --rule:#E2E6E0; --rule-soft:#F0F2EE;
+  --accent:#2C6152; --accent-bg:#EAF3EF;
+  --good:#256B3F; --good-bg:#E4F1E8;
+  --warn:#8A5D10; --warn-bg:#FAF0D9;
+  --bad:#A33528;  --bad-bg:#FBE6E1;
+  --sans:"PingFang SC","HarmonyOS Sans SC","MiSans","Source Han Sans SC","Noto Sans SC",
+         "Hiragino Sans GB","Microsoft YaHei","Droid Sans Fallback",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"PingFang SC","Microsoft YaHei",monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"],:root[data-theme="light"]{
+  --paper:#FCFDFB; --card:#FFFFFF; --ink:#141A17; --ink-soft:#4F574F; --ink-faint:#7C847D;
+  --rule:#E2E6E0; --rule-soft:#F0F2EE; --accent:#2C6152; --accent-bg:#EAF3EF;
+  --good:#256B3F; --good-bg:#E4F1E8; --warn:#8A5D10; --warn-bg:#FAF0D9;
+  --bad:#A33528; --bad-bg:#FBE6E1; color-scheme:light;
+}
+*{box-sizing:border-box;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+     font-size:16px;line-height:1.6;-webkit-tap-highlight-color:transparent}
+.app{max-width:640px;margin:0 auto;padding:18px 14px 60px}
+h1{font-size:21px;margin:0 0 4px;letter-spacing:.3px}
+h2{font-size:16px;margin:26px 0 10px;color:var(--accent);letter-spacing:.3px}
+.lede{color:var(--ink-soft);font-size:14.5px;margin:0 0 6px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+      padding:14px 15px;margin:10px 0}
+.ttl{font-weight:600;font-size:16px;margin:0 0 2px}
+.sub{color:var(--ink-faint);font-size:12.5px;font-family:var(--mono);word-break:break-all;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--ink-soft);margin:9px 0 3px}
+input,textarea{width:100%;font-size:16px;font-family:var(--mono);padding:9px 10px;
+  min-height:44px;border:1px solid var(--rule);border-radius:7px;background:var(--card);
+  color:var(--ink);-webkit-appearance:none}
+input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;
+  box-shadow:0 0 0 3px var(--accent-bg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+button{font-family:inherit;font-size:15px;min-height:44px;padding:10px 15px;cursor:pointer;
+  border:1px solid var(--accent);border-radius:8px;background:var(--card);color:var(--accent);
+  font-weight:600}
+button.solid{background:var(--accent);color:#fff}
+button.tiny{font-size:13px;min-height:38px;padding:7px 11px;font-weight:500}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;
+  font-weight:600;margin-right:5px;white-space:nowrap}
+.p-good{background:var(--good-bg);color:var(--good)}
+.p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-bad{background:var(--bad-bg);color:var(--bad)}
+.p-idle{background:var(--rule-soft);color:var(--ink-faint)}
+.log{font-family:var(--mono);font-size:12.5px;line-height:1.55;white-space:pre-wrap;
+  word-break:break-all;background:var(--rule-soft);border-radius:7px;padding:10px 11px;
+  margin-top:10px;max-height:280px;overflow:auto}
+.log:empty{display:none}
+.note{font-size:13px;color:var(--ink-soft);background:var(--accent-bg);
+  border-radius:8px;padding:10px 12px;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+th{color:var(--ink-faint);font-weight:600;font-size:12px}
+canvas{max-width:100%;border:1px solid var(--rule);border-radius:8px;display:block;margin-top:8px}
+.fold{border-top:1px solid var(--rule-soft);margin-top:10px}
+.fold>summary{list-style:none;cursor:pointer;padding:11px 26px 4px 2px;position:relative;
+  font-size:13.5px;color:var(--accent);font-weight:600}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::after{content:"";position:absolute;right:8px;top:17px;width:7px;height:7px;
+  border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);
+  transform:rotate(45deg);transition:transform .18s}
+.fold[open]>summary::after{transform:rotate(-135deg);top:20px}
+@media (prefers-reduced-motion:reduce){.fold>summary::after{transition:none}}
+img.shot{max-width:100%;border-radius:8px;border:1px solid var(--rule);margin-top:8px;display:block}
+code{font-family:var(--mono);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<h1>视觉模型直连探针</h1>
+<p class="lede">测「手机浏览器能不能直接调国产视觉大模型」。这一步不过，拍照识别就得改走代理或手动粘贴。</p>
+
+<div class="note" id="env"></div>
+
+<div class="note">
+<b>先看这个：不填密钥也能测跨域。</b><br>
+浏览器只在跨域头匹配时才把响应交给 JS —— 所以哪怕返回 401「密钥无效」，也<b>证明跨域是通的</b>。
+先把所有厂商的 ① ② 点一遍，只给通过的那家去注册、拿密钥、再测 ③。
+</div>
+
+<h2>一 · 测试图片</h2>
+<p class="lede">下面这张是程序画的假化验单，三个值可以自动对分。也可以换成你自己的真单子（真单子更能说明问题）。</p>
+<canvas id="cv" width="720" height="440"></canvas>
+<div class="row">
+  <button class="tiny" onclick="useSynthetic()">用这张合成单</button>
+  <button class="tiny" onclick="document.getElementById('pick').click()">换成真化验单</button>
+  <span id="imginfo" class="pill p-idle">未准备</span>
+</div>
+<input type="file" id="pick" accept="image/*" hidden onchange="useReal(event)">
+<img id="preview" class="shot" hidden alt="">
+<details class="fold"><summary>真单子怎么对分？</summary>
+<p class="lede">合成单会自动比对 <code>62 / 2.59 / 6.4</code> 三个值。换成真单子后自动对分失效，
+需要你自己看返回的 JSON —— 重点看<b>有没有串行</b>：某个项目名配到了隔壁行的数值。这比漏掉更危险。</p>
+</details>
+
+<h2>二 · 逐家测试</h2>
+<div id="list"></div>
+
+<h2>三 · 汇总</h2>
+<div class="card" id="sum"><span class="pill p-idle">还没有结果</span></div>
+<div class="row">
+  <button class="solid" onclick="copyAll()">复制全部结果</button>
+  <button onclick="clearKeys()">清除已存的密钥</button>
+</div>
+<p class="lede" style="margin-top:14px">密钥只存在这台手机的 localStorage 里，除各厂商 API 外不会发到任何地方。测完建议点「清除已存的密钥」。</p>
+
+</div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * 探针。零依赖，不与正式 app 共用任何存储键（一律 bl_probe_ 前缀）。
+ * 判定原则：
+ *   fetch 抛 TypeError  → 跨域被拦 或 域名不可达（用 ① 区分）
+ *   fetch 拿到任何响应  → 跨域通过（401 / 400 也算通过）
+ * ------------------------------------------------------------------ */
+
+var PROVIDERS = [
+  { id:"deepseek", name:"DeepSeek（对照组，无视觉）",
+    url:"https://api.deepseek.com/chat/completions",
+    model:"deepseek-chat", vision:false,
+    note:"已知跨域可用。它通了说明探针本身没问题；它也不通说明是网络问题，不是厂商问题。" },
+  { id:"zhipu", name:"智谱 GLM-4V",
+    url:"https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    model:"glm-4v-flash", vision:true,
+    note:"glm-4v-flash 免费。部分版本要求 image_url.url 填裸 base64（不带 data: 前缀），下面可切换。" },
+  { id:"dashscope", name:"阿里百炼 Qwen-VL",
+    url:"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    model:"qwen-vl-max-latest", vision:true,
+    note:"OpenAI 兼容模式。中文表格识别口碑最好的一档。" },
+  { id:"ark", name:"火山方舟 豆包",
+    url:"https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+    model:"doubao-1.5-vision-pro-32k-250115", vision:true,
+    note:"model 可能要填推理接入点 ID（ep-xxxx），以控制台为准。" },
+  { id:"silicon", name:"硅基流动 SiliconFlow",
+    url:"https://api.siliconflow.cn/v1/chat/completions",
+    model:"Qwen/Qwen2.5-VL-32B-Instruct", vision:true,
+    note:"聚合平台，跨域策略有时比原厂宽松，值得一试。" },
+  { id:"step", name:"阶跃星辰 StepFun",
+    url:"https://api.stepfun.com/v1/chat/completions",
+    model:"step-1v-8k", vision:true, note:"" },
+  { id:"minimax", name:"MiniMax",
+    url:"https://api.minimax.chat/v1/text/chatcompletion_v2",
+    model:"MiniMax-Text-01", vision:true, note:"" },
+  { id:"openrouter", name:"OpenRouter（非大陆域名）",
+    url:"https://openrouter.ai/api/v1/chat/completions",
+    model:"qwen/qwen2.5-vl-72b-instruct", vision:true,
+    note:"官方文档支持浏览器直调，但域名在境外，大陆网络下未必稳。" }
+];
+
+/* 合成单上的三个值，用于自动对分 */
+var EXPECT = [
+  { name:"谷丙转氨酶",   val:"62"   },
+  { name:"低密度脂蛋白", val:"2.59" },
+  { name:"糖化血红蛋白", val:"6.4"  }
+];
+
+var IMG = null;          // 当前测试图片
+var IMG_LABEL = "";
+var RESULTS = {};        // id -> {reach, cors, vision, acc}
+
+function esc(s){ return String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+function lsGet(k){ try{ return localStorage.getItem(k) || ""; }catch(e){ return ""; } }
+function lsSet(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} }
+function el(id){ return document.getElementById(id); }
+function logTo(id, line){
+  var box = el("log-" + id);
+  box.textContent += (box.textContent ? "\n" : "") + line;
+  box.scrollTop = box.scrollHeight;
+}
+function setPill(id, which, cls, text){
+  var p = el(which + "-" + id);
+  if (p) { p.className = "pill " + cls; p.textContent = text; }
+}
+function stamp(){
+  var d = new Date();
+  function p(n){ return (n < 10 ? "0" : "") + n; }
+  return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
+/* ---------- 环境 ---------- */
+(function showEnv(){
+  var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+                   || window.navigator.standalone === true;
+  el("env").innerHTML = [
+    "<b>当前环境</b>",
+    "页面来源：<code>" + esc(location.origin) + "</code>",
+    "协议：<code>" + esc(location.protocol) + "</code>" +
+      (location.protocol === "https:" ? "" : " ← <b>必须是 https 才准</b>"),
+    "运行方式：" + (standalone ? "已安装的 PWA（最贴近真实使用）" : "浏览器标签页"),
+    "在线状态：" + (navigator.onLine ? "在线" : "<b>离线</b>")
+  ].join("<br>");
+})();
+
+/* ---------- 合成化验单 ---------- */
+function drawSheet(){
+  var c = el("cv"), g = c.getContext("2d");
+  var ff = getComputedStyle(document.body).fontFamily;
+  g.fillStyle = "#fff"; g.fillRect(0,0,c.width,c.height);
+  g.fillStyle = "#111";
+  g.font = "bold 26px " + ff;
+  g.fillText("生化检验报告单（测试用 · 非真实）", 28, 46);
+  g.strokeStyle = "#333"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(28,62); g.lineTo(692,62); g.stroke();
+
+  g.font = "16px " + ff;
+  g.fillText("姓名：测试", 28, 90);
+  g.fillText("送检日期：2026-07-28", 250, 90);
+  g.fillText("标本：血清", 520, 90);
+
+  var cols = [28, 300, 400, 470, 600];
+  var head = ["项目", "结果", "提示", "单位", "参考范围"];
+  g.font = "bold 17px " + ff;
+  for (var i = 0; i < head.length; i++) g.fillText(head[i], cols[i], 132);
+  g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(28,144); g.lineTo(692,144); g.stroke();
+
+  var rows = [
+    ["谷丙转氨酶 ALT",     "62",   "↑", "U/L",    "9 - 50"],
+    ["谷草转氨酶 AST",     "31",   "",  "U/L",    "15 - 40"],
+    ["总胆固醇 TC",        "5.12", "",  "mmol/L", "< 5.20"],
+    ["甘油三酯 TG",        "2.31", "↑", "mmol/L", "< 1.70"],
+    ["低密度脂蛋白 LDL-C", "2.59", "",  "mmol/L", "< 3.40"],
+    ["高密度脂蛋白 HDL-C", "1.08", "↓", "mmol/L", "> 1.16"],
+    ["糖化血红蛋白 HbA1c", "6.4",  "↑", "%",      "4.0 - 6.0"],
+    ["血清肌酐 Cr",        "78",   "",  "umol/L", "57 - 111"]
+  ];
+  g.font = "16px " + ff;
+  var y = 172;
+  for (var r = 0; r < rows.length; r++) {
+    for (var k = 0; k < rows[r].length; k++) {
+      g.fillStyle = (k === 2 && rows[r][k]) ? "#a33528" : "#111";
+      g.fillText(rows[r][k], cols[k], y);
+    }
+    g.fillStyle = "#ddd";
+    g.beginPath(); g.moveTo(28, y + 9); g.lineTo(692, y + 9); g.stroke();
+    y += 32;
+  }
+  g.fillStyle = "#555";
+  g.font = "14px " + ff;
+  g.fillText("检验者：—    审核者：—    本单据由程序生成，仅用于接口测试", 28, 428);
+}
+drawSheet();
+
+function useSynthetic(){
+  IMG = el("cv").toDataURL("image/jpeg", 0.85);
+  IMG_LABEL = "合成单（可自动对分）";
+  el("preview").hidden = true;
+  markImg();
+}
+function useReal(ev){
+  var f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  var img = new Image();
+  var fr = new FileReader();
+  fr.onload = function(){
+    img.onload = function(){
+      /* 与正式 app 相同的压缩参数：长边 1600、JPEG q0.82 */
+      var max = 1600, w = img.width, h = img.height;
+      if (Math.max(w,h) > max) { var s = max / Math.max(w,h); w = Math.round(w*s); h = Math.round(h*s); }
+      var cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      cv.getContext("2d").drawImage(img, 0, 0, w, h);
+      IMG = cv.toDataURL("image/jpeg", 0.82);
+      IMG_LABEL = "真实化验单 " + w + "x" + h + "（自动对分已失效）";
+      var pv = el("preview"); pv.src = IMG; pv.hidden = false;
+      markImg();
+    };
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(f);
+  ev.target.value = "";
+}
+function markImg(){
+  var kb = Math.round(IMG.length * 0.75 / 1024);
+  var p = el("imginfo");
+  p.className = "pill " + (kb > 900 ? "p-warn" : "p-good");
+  p.textContent = IMG_LABEL + " · 约 " + kb + " KB";
+}
+useSynthetic();
+
+/* ---------- 渲染厂商卡片 ---------- */
+(function renderList(){
+  var h = "";
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    var p = PROVIDERS[i];
+    h += '<div class="card" id="card-' + p.id + '">'
+      +  '<p class="ttl">' + esc(p.name) + '</p>'
+      +  '<p class="sub">' + esc(p.url) + '</p>'
+      +  '<div>'
+      +    '<span class="pill p-idle" id="reach-' + p.id + '">1 可达 —</span>'
+      +    '<span class="pill p-idle" id="cors-'  + p.id + '">2 跨域 —</span>'
+      +    (p.vision ? '<span class="pill p-idle" id="vis-' + p.id + '">3 读图 —</span>' : "")
+      +  '</div>'
+      +  (p.note ? '<p class="lede" style="margin:9px 0 0;font-size:13px">' + esc(p.note) + '</p>' : "")
+      +  '<label for="model-' + p.id + '">模型名</label>'
+      +  '<input id="model-' + p.id + '" value="' + esc(lsGet("bl_probe_model_" + p.id) || p.model) + '">'
+      +  '<label for="key-' + p.id + '">API 密钥（测 1、2 可留空）</label>'
+      +  '<input id="key-' + p.id + '" type="password" autocomplete="off" placeholder="留空也能测跨域"'
+      +      ' value="' + esc(lsGet("bl_probe_key_" + p.id)) + '">'
+      +  (p.id === "zhipu"
+          ? '<label style="display:flex;align-items:center;gap:8px;margin-top:10px">'
+            + '<input type="checkbox" id="raw-' + p.id + '" style="width:auto;min-height:auto">'
+            + '<span>image_url 填裸 base64（去掉 data: 前缀）</span></label>'
+          : "")
+      +  '<div class="row">'
+      +    '<button class="tiny" onclick="testReach(\'' + p.id + '\')">1 可达性</button>'
+      +    '<button class="tiny solid" onclick="testCors(\'' + p.id + '\')">2 跨域</button>'
+      +    (p.vision ? '<button class="tiny" onclick="testVision(\'' + p.id + '\')">3 读图</button>' : "")
+      +    '<button class="tiny" onclick="clearLog(\'' + p.id + '\')">清空日志</button>'
+      +  '</div>'
+      +  '<div class="log" id="log-' + p.id + '"></div>'
+      +  '</div>';
+  }
+  el("list").innerHTML = h;
+})();
+
+function prov(id){ for (var i=0;i<PROVIDERS.length;i++) if (PROVIDERS[i].id===id) return PROVIDERS[i]; }
+function res(id){ if (!RESULTS[id]) RESULTS[id] = {}; return RESULTS[id]; }
+function clearLog(id){ el("log-" + id).textContent = ""; }
+function saveInputs(id){
+  lsSet("bl_probe_model_" + id, el("model-" + id).value.trim());
+  lsSet("bl_probe_key_" + id, el("key-" + id).value.trim());
+}
+
+/* ---------- 1 可达性：no-cors，只看域名通不通 ---------- */
+function testReach(id){
+  var p = prov(id);
+  setPill(id, "reach", "p-idle", "1 可达 …");
+  logTo(id, "[" + stamp() + "] 1 no-cors 探测 " + p.url);
+  var t0 = Date.now();
+  fetch(p.url, { method:"POST", mode:"no-cors", body:"{}" })
+    .then(function(){
+      var ms = Date.now() - t0;
+      setPill(id, "reach", "p-good", "1 可达 OK");
+      res(id).reach = "通 (" + ms + "ms)";
+      logTo(id, "  OK 域名可达，" + ms + "ms（不透明响应，看不到内容，这是正常的）");
+      summarize();
+    })
+    .catch(function(e){
+      var ms = Date.now() - t0;
+      setPill(id, "reach", "p-bad", "1 可达 X");
+      res(id).reach = "不通";
+      logTo(id, "  X 域名不可达（" + ms + "ms）：" + e.name + " " + e.message);
+      logTo(id, "  -> DNS 被污染、被墙、或本机断网。跟跨域无关。");
+      summarize();
+    });
+}
+
+/* ---------- 2 跨域：真请求，拿到任何状态码都算通 ---------- */
+function testCors(id){
+  saveInputs(id);
+  var p = prov(id);
+  var key = el("key-" + id).value.trim();
+  var model = el("model-" + id).value.trim() || p.model;
+  setPill(id, "cors", "p-idle", "2 跨域 …");
+  logTo(id, "[" + stamp() + "] 2 带 Authorization 的真实 POST（会触发预检 OPTIONS）");
+
+  var ctl = new AbortController();
+  var timer = setTimeout(function(){ ctl.abort(); }, 45000);
+  var t0 = Date.now();
+
+  fetch(p.url, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + (key || "probe-no-key") },
+    body: JSON.stringify({ model:model, max_tokens:4, messages:[{ role:"user", content:"hi" }] }),
+    signal: ctl.signal
+  })
+  .then(function(r){
+    clearTimeout(timer);
+    var ms = Date.now() - t0;
+    return r.text().then(function(txt){
+      setPill(id, "cors", "p-good", "2 跨域 OK");
+      res(id).cors = "通 (HTTP " + r.status + ")";
+      logTo(id, "  OK 跨域通过 —— 浏览器把响应交给了 JS，说明 Access-Control-Allow-Origin 匹配");
+      logTo(id, "  HTTP " + r.status + " · " + ms + "ms");
+      if (r.status === 401 || r.status === 403)
+        logTo(id, "  （密钥无效或未填，但不影响结论：跨域是通的）");
+      logTo(id, "  响应：" + txt.slice(0, 400));
+      summarize();
+    });
+  })
+  .catch(function(e){
+    clearTimeout(timer);
+    var ms = Date.now() - t0;
+    if (e.name === "AbortError") {
+      setPill(id, "cors", "p-warn", "2 跨域 超时");
+      res(id).cors = "超时";
+      logTo(id, "  45 秒无响应，判为超时");
+    } else {
+      setPill(id, "cors", "p-bad", "2 跨域 X");
+      res(id).cors = "被拦";
+      logTo(id, "  X " + e.name + "：" + e.message + "（" + ms + "ms）");
+      logTo(id, "  -> 若 1 是通的，那就是跨域被拦：该厂商没给浏览器发 CORS 头。");
+      logTo(id, "  -> 若 1 也不通，那是网络问题，不能怪跨域。");
+    }
+    summarize();
+  });
+}
+
+/* ---------- 3 读图：data-URI 图片 + 结构化抽取 ---------- */
+var VIS_PROMPT =
+  "你是化验单结构化助手。只提取图片里明确出现的内容，不要推测、不要诊断。\n" +
+  "返回一个 JSON 对象，不要 Markdown 代码块，格式：\n" +
+  '{"reportDate":"YYYY-MM-DD或null","observations":[' +
+  '{"itemName":"项目名","resultText":"结果原文","unit":"单位或null",' +
+  '"referenceText":"参考范围原文或null","abnormalFlag":"high|low|abnormal|normal|null"}],' +
+  '"observationCount":数字}\n' +
+  "abnormalFlag 只从结果旁的标记读取：上箭头或「偏高」为 high，下箭头或「偏低」为 low，" +
+  "绝对不要根据参考范围自己推断。没有标记就填 null。\n" +
+  "observationCount 必须等于 observations 的实际条数。";
+
+function testVision(id){
+  saveInputs(id);
+  var p = prov(id);
+  var key = el("key-" + id).value.trim();
+  var model = el("model-" + id).value.trim() || p.model;
+  if (!key) { logTo(id, "[" + stamp() + "] 3 需要密钥，先填一个"); return; }
+  if (!IMG) { logTo(id, "[" + stamp() + "] 3 还没准备测试图片"); return; }
+
+  var rawBox = el("raw-" + id);
+  var raw = !!(rawBox && rawBox.checked);
+  var imgUrl = raw ? IMG.replace(/^data:image\/\w+;base64,/, "") : IMG;
+
+  setPill(id, "vis", "p-idle", "3 读图 …");
+  logTo(id, "[" + stamp() + "] 3 发送图片（" + Math.round(IMG.length*0.75/1024) + " KB，"
+           + (raw ? "裸 base64" : "data URI") + "）model=" + model);
+
+  var ctl = new AbortController();
+  var timer = setTimeout(function(){ ctl.abort(); }, 120000);
+  var t0 = Date.now();
+
+  fetch(p.url, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + key },
+    body: JSON.stringify({
+      model: model, temperature: 0, max_tokens: 2000,
+      messages: [{ role:"user", content: [
+        { type:"text", text: VIS_PROMPT },
+        { type:"image_url", image_url:{ url: imgUrl } }
+      ]}]
+    }),
+    signal: ctl.signal
+  })
+  .then(function(r){
+    clearTimeout(timer);
+    var ms = Date.now() - t0;
+    return r.text().then(function(txt){
+      logTo(id, "  HTTP " + r.status + " · " + Math.round(ms/1000) + "s");
+      if (!r.ok) {
+        setPill(id, "vis", "p-bad", "3 读图 X");
+        res(id).vision = "HTTP " + r.status;
+        logTo(id, "  X " + txt.slice(0, 500));
+        summarize(); return;
+      }
+      var content = "";
+      try {
+        var data = JSON.parse(txt);
+        var ch = data && data.choices && data.choices[0];
+        content = (ch && ch.message && ch.message.content) || "";
+      } catch (e) { content = txt; }
+      if (!content) {
+        setPill(id, "vis", "p-warn", "3 读图 空");
+        res(id).vision = "返回为空";
+        logTo(id, "  响应结构对不上，原文：" + txt.slice(0, 500));
+        summarize(); return;
+      }
+      logTo(id, "  模型返回：\n" + content.slice(0, 1500));
+      score(id, content, ms);
+      summarize();
+    });
+  })
+  .catch(function(e){
+    clearTimeout(timer);
+    if (e.name === "AbortError") {
+      setPill(id, "vis", "p-warn", "3 读图 超时");
+      res(id).vision = "超时(120s)";
+      logTo(id, "  120 秒无响应");
+    } else {
+      setPill(id, "vis", "p-bad", "3 读图 X");
+      res(id).vision = "失败：" + e.name;
+      logTo(id, "  X " + e.name + "：" + e.message);
+      logTo(id, "  -> 如果 2 通而 3 挂，多半是图片太大，或该模型不收 data URI 只收公网链接。");
+    }
+    summarize();
+  });
+}
+
+/* 自动对分：只对合成单有效 */
+function score(id, content, ms){
+  res(id).vision = "成功 (" + Math.round(ms/1000) + "s)";
+  if (IMG_LABEL.indexOf("合成单") !== 0) {
+    setPill(id, "vis", "p-good", "3 读图 OK");
+    res(id).acc = "真单子，需人工核对";
+    logTo(id, "  OK 调用成功。用的是真单子，请自己核对上面的 JSON —— 重点看有没有串行。");
+    return;
+  }
+  var hit = 0, miss = [];
+  for (var i = 0; i < EXPECT.length; i++) {
+    var e = EXPECT[i];
+    var okName = content.indexOf(e.name) >= 0;
+    var okVal  = content.indexOf(e.val) >= 0;
+    if (okName && okVal) hit++;
+    else miss.push(e.name + "(" + (okName ? "名对" : "名错") + "/" + (okVal ? "值对" : "值错") + ")");
+  }
+  /* 串行检查：ALT 那一段里必须出现 62 */
+  var seg = content.split(/[{}]/).filter(function(s){ return s.indexOf("谷丙") >= 0; }).join(" ");
+  var altOk = seg.indexOf("62") >= 0;
+  /* 计数一致性：模型自报条数 vs 实际条数 */
+  var cnt = content.match(/"observationCount"\s*:\s*(\d+)/);
+  var items = (content.match(/"itemName"/g) || []).length;
+  var cntOk = !cnt || Number(cnt[1]) === items;
+
+  var line = hit + "/" + EXPECT.length + " 关键值命中";
+  if (!altOk) line += " · ALT 疑似串行";
+  if (!cntOk) line += " · 自报 " + cnt[1] + " 条实际 " + items + " 条";
+  res(id).acc = line;
+
+  var cls = (hit === EXPECT.length && altOk && cntOk) ? "p-good" : (hit >= 2 ? "p-warn" : "p-bad");
+  setPill(id, "vis", cls, "3 读图 " + hit + "/" + EXPECT.length);
+  logTo(id, "  对分：" + line + (miss.length ? "\n  未命中：" + miss.join("、") : ""));
+  if (!altOk) logTo(id, "  串行是最危险的错误：项目名配到了隔壁行的数值。");
+}
+
+/* ---------- 汇总 ---------- */
+function summarize(){
+  var h = "<table><tr><th>厂商</th><th>可达</th><th>跨域</th><th>读图</th><th>对分</th></tr>";
+  var pass = [], any = false;
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    var p = PROVIDERS[i], r = RESULTS[p.id] || {};
+    if (!r.reach && !r.cors && !r.vision) continue;
+    any = true;
+    h += "<tr><td>" + esc(p.name.split("（")[0]) + "</td><td>" + esc(r.reach || "—")
+       + "</td><td>" + esc(r.cors || "—") + "</td><td>" + esc(r.vision || "—")
+       + "</td><td>" + esc(r.acc || "—") + "</td></tr>";
+    if (p.vision && r.cors && r.cors.indexOf("通") === 0) pass.push(p.name.split("（")[0]);
+  }
+  h += "</table>";
+  if (!any) { el("sum").innerHTML = '<span class="pill p-idle">还没有结果</span>'; return; }
+  if (pass.length) h += '<p class="lede" style="margin-top:12px"><b>跨域通过的视觉厂商：</b>'
+                      + esc(pass.join("、")) + " —— 拿这几家去测第 3 步。</p>";
+  el("sum").innerHTML = h;
+}
+
+function copyAll(){
+  var lines = ["视觉模型直连探针 · " + new Date().toLocaleString(),
+               "来源：" + location.origin + "  协议：" + location.protocol, ""];
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    var p = PROVIDERS[i], r = RESULTS[p.id] || {};
+    if (!r.reach && !r.cors && !r.vision) continue;
+    lines.push("【" + p.name + "】 " + p.url);
+    lines.push("  可达 " + (r.reach || "—") + " | 跨域 " + (r.cors || "—")
+             + " | 读图 " + (r.vision || "—") + " | 对分 " + (r.acc || "—"));
+    var lg = el("log-" + p.id).textContent;
+    if (lg) lines.push(lg.split("\n").map(function(s){ return "  " + s; }).join("\n"));
+    lines.push("");
+  }
+  var txt = lines.join("\n");
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(function(){ alert("已复制"); },
+                                            function(){ fallbackCopy(txt); });
+  } else fallbackCopy(txt);
+}
+function fallbackCopy(txt){
+  var ta = document.createElement("textarea");
+  ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); alert("已复制"); }
+  catch(e){ alert("复制失败，请手动长按选择"); }
+  document.body.removeChild(ta);
+}
+
+function clearKeys(){
+  if (!confirm("清除所有已保存的密钥和模型名？")) return;
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    lsSet("bl_probe_key_" + PROVIDERS[i].id, "");
+    lsSet("bl_probe_model_" + PROVIDERS[i].id, "");
+    el("key-" + PROVIDERS[i].id).value = "";
+  }
+  alert("已清除");
+}
+</script>
+</body>
+</html>
