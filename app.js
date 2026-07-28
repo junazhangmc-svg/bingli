@@ -490,10 +490,18 @@ function renderEntry(draft){
         (vlReady() ? "拍完会自动填进下面的表单，但每一项都要你核对后才保存。"
                    : "还没配置识别服务。到「更多 → 拍照识别」选一家并填密钥，也可以直接手填。") +
         '</p>' +
-        '<input type="file" id="shot-input" accept="image/*" capture="environment" hidden ' +
+        /* 必须是两个 input：capture="environment" 会强制直接开相机、
+           把相册入口整个去掉，补录旧化验单就没法选图了。
+           不带 capture 的那个才会弹出相册/文件选择。 */
+        '<input type="file" id="shot-camera" accept="image/*" capture="environment" hidden ' +
+          'onchange="onPhoto(event)">' +
+        '<input type="file" id="shot-input" accept="image/*" hidden ' +
           'onchange="onPhoto(event)">' +
         (vlReady()
-          ? '<div class="row"><button class="btn" onclick="pickPhoto()">拍照 / 选图</button></div>'
+          ? '<div class="row">' +
+              '<button class="btn" onclick="takePhoto()">拍照</button>' +
+              '<button class="btn" onclick="pickPhoto()">从相册选</button>' +
+            '</div>'
           : '<div class="row"><button class="btn tiny" onclick="go(\'more\')">去配置</button></div>') +
         '<div id="shot-box"></div></div>';
     }

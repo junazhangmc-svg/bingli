@@ -351,6 +351,12 @@ function callVision(dataUrl, diseases){
 var SHOT = null;        // {dataUrl, thumb, w, h, blob}
 var VIS_DRAFT = null;   // draftFromVision 的结果，保存时用来还原原文出处
 
+/* 两个入口分开：带 capture 的直接开相机，不带的才弹相册。
+   合成一个按钮做不到 —— capture 一旦加上，浏览器就不给相册选项了。 */
+function takePhoto(){
+  var el = document.getElementById("shot-camera");
+  if (el) el.click();
+}
 function pickPhoto(){
   var el = document.getElementById("shot-input");
   if (el) el.click();
@@ -386,6 +392,7 @@ function renderShot(){
       '（已压缩，原图不保留）</p>' +
     '<div class="row">' +
       '<button class="btn solid" onclick="runVision()">识别这张</button>' +
+      '<button class="btn tiny" onclick="takePhoto()">重拍</button>' +
       '<button class="btn tiny" onclick="pickPhoto()">换一张</button>' +
       '<button class="btn tiny" onclick="SHOT=null;renderShot()">取消</button>' +
     '</div><div id="vis-out"></div>';
