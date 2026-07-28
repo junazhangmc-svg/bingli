@@ -136,8 +136,8 @@ var PROVIDERS = [
     note:"已知跨域可用。它通了说明探针本身没问题；它也不通说明是网络问题，不是厂商问题。" },
   { id:"zhipu", name:"智谱 GLM-4V",
     url:"https://open.bigmodel.cn/api/paas/v4/chat/completions",
-    model:"glm-4v-flash", vision:true,
-    note:"glm-4v-flash 免费。部分版本要求 image_url.url 填裸 base64（不带 data: 前缀），下面可切换。" },
+    model:"glm-4v-flash", vision:true, maxTokens:1024,
+    note:"glm-4v-flash 免费，但 max_tokens 上限只有 1024，密集单子可能截断。部分版本要求 image_url.url 填裸 base64（不带 data: 前缀），下面可切换。" },
   { id:"dashscope", name:"阿里百炼 Qwen-VL",
     url:"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     model:"qwen-vl-max-latest", vision:true,
@@ -450,7 +450,7 @@ function testVision(id){
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + key },
     body: JSON.stringify({
-      model: model, temperature: 0, max_tokens: 2000,
+      model: model, temperature: 0, max_tokens: (p.maxTokens || 2000),
       messages: [{ role:"user", content: [
         { type:"text", text: VIS_PROMPT },
         { type:"image_url", image_url:{ url: imgUrl } }

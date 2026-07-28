@@ -419,7 +419,12 @@ function fallbackCopy(txt){
 /* ==========================================================================
  * 录入 / 编辑
  * ========================================================================== */
-function newRec(){ EDIT_ID = null; go("entry"); }
+function newRec(){
+  EDIT_ID = null;
+  if (typeof SHOT !== "undefined") SHOT = null;
+  if (typeof VIS_DRAFT !== "undefined") VIS_DRAFT = null;
+  go("entry");
+}
 function editRec(id){ EDIT_ID = id; go("entry"); }
 
 function curRec(){
@@ -459,6 +464,11 @@ function setScope(s){
 
 function renderEntry(draft){
   var r = curRec();
+  /* 识别完之后切到别的标签页再回来时，renderEntry 拿不到 draft。
+     这时必须从 VIS_DRAFT 重新推出表单内容 —— 否则核对块还在，
+     上面的字段却全空了，人会以为识别结果丢了。 */
+  if (!draft && !r && typeof VIS_DRAFT !== "undefined" && VIS_DRAFT)
+    draft = visionToForm(VIS_DRAFT);
   var base = draft || (r ? {
     date:r.date, type:r.type, hospital:r.hospital, dept:r.dept, title:r.title,
     dx:r.dx, findings:r.findings, impression:r.impression,
@@ -469,6 +479,25 @@ function renderEntry(draft){
   var scope = entryScope();
 
   var h = '<h2 class="sec">' + (r ? "编辑记录" : "新建记录") + '</h2>';
+
+  /* 拍照识别只在新建时给，编辑已有记录时不该再拍一张覆盖掉 */
+  if (!r && typeof vlSettingsBlock === "function") {
+    if (typeof VIS_DRAFT !== "undefined" && VIS_DRAFT) {
+      h += visionWarnBlock(VIS_DRAFT);
+    } else {
+      h += '<div class="card"><h3>拍化验单自动填</h3>' +
+        '<p class="tiny-note">' +
+        (vlReady() ? "拍完会自动填进下面的表单，但每一项都要你核对后才保存。"
+                   : "还没配置识别服务。到「更多 → 拍照识别」选一家并填密钥，也可以直接手填。") +
+        '</p>' +
+        '<input type="file" id="shot-input" accept="image/*" capture="environment" hidden ' +
+          'onchange="onPhoto(event)">' +
+        (vlReady()
+          ? '<div class="row"><button class="btn" onclick="pickPhoto()">拍照 / 选图</button></div>'
+          : '<div class="row"><button class="btn tiny" onclick="go(\'more\')">去配置</button></div>') +
+        '<div id="shot-box"></div></div>';
+    }
+  }
 
   h += '<div class="card">';
   h += '<label for="in-date">报告日期（以报告上写的为准，不是今天）</label>' +
@@ -553,7 +582,7 @@ function renderEntry(draft){
        escapeHtml(val("note")) + '</textarea>';
   h += '</div>';
 
-  h += '<div class="row"><button class="btn" onclick="go(\'hist\')">取消</button></div>';
+  h += '<div class="row"><button class="btn" onclick="cancelEntry()">取消</button></div>';
 
   document.getElementById("v-entry").innerHTML = h;
   setFab(r ? "保存修改" : "保存这条记录", saveEntry);
@@ -599,8 +628,11 @@ function saveEntry(){
   if (!filled && !hasText) { toast("至少填一个项目或写点文字"); return; }
 
   var old = curRec();
+  /* 拍照识别来的记录：保留每一项的原文出处，但值以表单为准（人可能改过） */
+  var vis = (VIS_DRAFT && !EDIT_ID) ? VIS_DRAFT : null;
   var rec = {
     id: EDIT_ID || undefined,
+    obs: vis ? reconcileObs(vis.obs, v) : undefined,
     date: d.date, type: d.type,
     title: d.title || "", hospital: d.hospital || "", dept: d.dept || "",
     dx: d.dx || "", findings: d.findings || "", impression: d.impression || "",
@@ -621,7 +653,17 @@ function saveEntry(){
   else rec.recheckDue = old.recheckDue;
 
   saveRecord(rec).then(function(saved){
-    EDIT_ID = null;
+    /* 照片跟着记录一起存。存不下（配额满了）也不能让整条记录白填，
+       所以图片失败只提示，不回滚。 */
+    if (vis && SHOT) {
+      return saveImage(saved.id, SHOT.blob, dataUrlToBlob(SHOT.thumb),
+                       { w: SHOT.w, h: SHOT.h, seq: 0 })
+        .then(function(){ return saved; })
+        .catch(function(){ toast("记录已存，但原图没能存下（可能空间不足）"); return saved; });
+    }
+    return saved;
+  }).then(function(saved){
+    EDIT_ID = null; VIS_DRAFT = null; SHOT = null; DRAFT = null;
     return refresh().then(function(){
       toast(old ? "已保存修改" : "已保存");
       openRec(saved.id);
@@ -629,6 +671,14 @@ function saveEntry(){
   }).catch(function(e){
     toast("保存失败：" + (e && e.message || e));
   });
+}
+
+/* 取消时必须把照片和识别草稿一起丢掉，否则下次新建会带着上一次的残留 */
+function cancelEntry(){
+  EDIT_ID = null;
+  if (typeof SHOT !== "undefined") SHOT = null;
+  if (typeof VIS_DRAFT !== "undefined") VIS_DRAFT = null;
+  go("hist");
 }
 
 function uniq(a){
@@ -765,6 +815,8 @@ function renderMore(){
   h += '<div class="card"><p class="lede">选一个或多个病，把相关历史全部调出来，' +
        '排成可以直接递给医生的材料。</p>' +
        '<div class="row"><button class="btn solid" onclick="go(\'print\')">去打印页</button></div></div>';
+
+  h += (typeof vlSettingsBlock === "function") ? vlSettingsBlock() : "";
 
   h += '<h2 class="sec">备份</h2>';
   h += '<div class="card"><p class="lede">数据只存在这台手机里。' +

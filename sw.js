@@ -9,11 +9,11 @@
  * 「新的 app.js 配旧的 store.js」这种半更新状态 —— 对存数据的应用来说
  * 这是最坏的失败模式。所以程序文件一律 network-first，图标才用 cache-first。
  * ========================================================================== */
-const VERSION = "bl-v3";
+const VERSION = "bl-v4";
 
 const ASSETS = [
   "./", "./index.html", "./manifest.json",
-  "./data.js", "./core.js", "./store.js", "./ai.js", "./print.js", "./app.js",
+  "./data.js", "./core.js", "./store.js", "./ai.js", "./vision.js", "./print.js", "./app.js",
   "./icon-192.png", "./icon-512.png", "./icon-maskable.png"
 ];
 
