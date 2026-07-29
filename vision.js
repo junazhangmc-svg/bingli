@@ -61,51 +61,82 @@ var IMG_MAX_EDGE = 1600;    // 长边。再大对识别几乎没帮助，只是�
 var IMG_QUALITY  = 0.82;
 var IMG_MAX_KB   = 900;     // 超过就降档重压，各家对单图大小都有限制
 
-function fileToImage(file){
+/* 解码。
+ * 【别再用 readAsDataURL 读原图】—— 手机上一张 8MB 的照片会先变成 11MB 的
+ * base64 字符串，光这一步就能把主线程卡住好几秒，表现就是「选完图半天没反应」。
+ * createImageBitmap 在浏览器内部线程解码，完全不经过 base64；
+ * 退回 <img> 时也走 object URL，同样不产生大字符串。 */
+function decodeImage(file){
+  if (typeof createImageBitmap === "function") {
+    return createImageBitmap(file).catch(function(){ return viaImgTag(file); });
+  }
+  return viaImgTag(file);
+}
+
+function viaImgTag(file){
   return new Promise(function(resolve, reject){
-    var fr = new FileReader();
-    fr.onerror = function(){ reject(new Error("读不了这个文件")); };
-    fr.onload = function(){
-      var img = new Image();
-      img.onerror = function(){ reject(new Error("这不是一张能打开的图片")); };
-      img.onload = function(){ resolve(img); };
-      img.src = fr.result;
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload  = function(){ URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = function(){
+      URL.revokeObjectURL(url);
+      reject(new Error("这张图打不开。如果是 HEIC/HEIF 格式（部分手机相机默认存这个），" +
+                       "先在相册里分享或导出成 JPG 再选。"));
     };
-    fr.readAsDataURL(file);
+    img.src = url;
   });
 }
 
-/* 压到长边 1600 / q0.82；还是太大就退到 1280 / q0.75。
- * 返回 {blob, dataUrl, w, h}。 */
-function shrink(img, maxEdge, quality){
-  maxEdge = maxEdge || IMG_MAX_EDGE;
-  quality = quality || IMG_QUALITY;
-  var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+/* toBlob 是异步的，编码不占主线程；toDataURL 是同步的，会卡住界面。 */
+function canvasToBlob(cv, q){
+  return new Promise(function(resolve, reject){
+    if (cv.toBlob) {
+      cv.toBlob(function(b){ b ? resolve(b) : reject(new Error("图片编码失败")); },
+                "image/jpeg", q);
+    } else {
+      try { resolve(dataUrlToBlob(cv.toDataURL("image/jpeg", q))); }
+      catch (e) { reject(e); }
+    }
+  });
+}
+
+function drawScaled(src, maxEdge){
+  var w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+  if (!w || !h) throw new Error("读不出这张图的尺寸");
   if (Math.max(w, h) > maxEdge) {
     var s = maxEdge / Math.max(w, h);
-    w = Math.round(w * s); h = Math.round(h * s);
+    w = Math.max(1, Math.round(w * s)); h = Math.max(1, Math.round(h * s));
   }
   var cv = document.createElement("canvas");
   cv.width = w; cv.height = h;
   var g = cv.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);   // 透明 PNG 转 JPEG 会变黑
-  g.drawImage(img, 0, 0, w, h);
-  var dataUrl = cv.toDataURL("image/jpeg", quality);
-  if (dataUrl.length * 0.75 / 1024 > IMG_MAX_KB && maxEdge > 1280)
-    return shrink(img, 1280, 0.75);
-  return { dataUrl: dataUrl, w: w, h: h, canvas: cv };
+  g.drawImage(src, 0, 0, w, h);
+  return cv;
 }
 
-function thumbOf(img){
-  var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-  var s = 220 / Math.max(w, h);
-  var cv = document.createElement("canvas");
-  cv.width = Math.max(1, Math.round(w * s));
-  cv.height = Math.max(1, Math.round(h * s));
-  var g = cv.getContext("2d");
-  g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height);
-  g.drawImage(img, 0, 0, cv.width, cv.height);
-  return cv.toDataURL("image/jpeg", 0.7);
+/* 压到长边 1600 / q0.82；还是太大就退到 1280 / q0.75。→ {blob, w, h} */
+function shrinkToBlob(src, maxEdge, q){
+  maxEdge = maxEdge || IMG_MAX_EDGE;
+  q = q || IMG_QUALITY;
+  var cv = drawScaled(src, maxEdge);
+  return canvasToBlob(cv, q).then(function(b){
+    if (b.size / 1024 > IMG_MAX_KB && maxEdge > 1280) return shrinkToBlob(src, 1280, 0.75);
+    return { blob: b, w: cv.width, h: cv.height };
+  });
+}
+
+function thumbToBlob(src){ return canvasToBlob(drawScaled(src, 220), 0.7); }
+
+/* 只在真要发请求的那一刻才转 base64，而且只转压缩后的那张（几百 KB），
+   不是原图。接口要的就是 data URI，这一步省不掉，但可以推迟并缩小。 */
+function blobToDataUrl(blob){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onload  = function(){ resolve(fr.result); };
+    fr.onerror = function(){ reject(new Error("图片转码失败")); };
+    fr.readAsDataURL(blob);
+  });
 }
 
 function dataUrlToBlob(u){
@@ -368,8 +399,15 @@ function callVision(dataUrl, diseases){
  * ========================================================================== */
 /* 这两个必须是模块级的：切换录入页分类会整页重渲染，
    把识别结果挂在 draft 对象上的话，一切分类就没了。 */
-var SHOT = null;        // {dataUrl, thumb, w, h, blob}
+var SHOT = null;        // {blob, thumbBlob, thumbUrl, w, h}
 var VIS_DRAFT = null;   // draftFromVision 的结果，保存时用来还原原文出处
+var shotBusy = false;   // 处理中再点一次会拿到半成品
+
+/* object URL 必须显式释放，否则每换一张图都漏一份内存 */
+function clearShot(){
+  if (SHOT && SHOT.thumbUrl) URL.revokeObjectURL(SHOT.thumbUrl);
+  SHOT = null;
+}
 
 /* 两个入口分开：带 capture 的直接开相机，不带的才弹相册。
    合成一个按钮做不到 —— capture 一旦加上，浏览器就不给相册选项了。 */
@@ -382,21 +420,50 @@ function pickPhoto(){
   if (el) el.click();
 }
 
+/* 处理中 / 失败的提示。失败时一定要带上「重拍」「换一张」，
+   否则出错后界面就是一段死文字，只能退出去重来。 */
+function showShotStatus(msg, bad){
+  var box = document.getElementById("shot-box");
+  if (!box) { toast(msg); return; }
+  box.innerHTML = bad
+    ? '<div class="card flag-bad"><p class="tiny-note">' + escapeHtml(msg) + '</p>' +
+      '<div class="row">' +
+        '<button class="btn tiny" onclick="takePhoto()">重拍</button>' +
+        '<button class="btn tiny" onclick="pickPhoto()">换一张</button>' +
+      '</div></div>'
+    : '<p class="lede">' + escapeHtml(msg) + '</p>';
+}
+
 function onPhoto(ev){
   var f = ev.target.files && ev.target.files[0];
-  ev.target.value = "";
+  ev.target.value = "";     // 同一张图再选一次也要能触发
   if (!f) return;
-  var box = document.getElementById("shot-box");
-  if (box) box.innerHTML = '<p class="lede">正在处理图片……</p>';
+  if (shotBusy) return;
 
-  fileToImage(f).then(function(img){
-    var small = shrink(img);
-    SHOT = { dataUrl: small.dataUrl, thumb: thumbOf(img),
-             w: small.w, h: small.h, blob: dataUrlToBlob(small.dataUrl) };
+  if (f.type && f.type.indexOf("image/") !== 0 &&
+      !/\.(jpe?g|png|webp|heic|heif|bmp)$/i.test(f.name || "")) {
+    showShotStatus("选中的不是图片文件", true);
+    return;
+  }
+
+  shotBusy = true;
+  clearShot();
+  showShotStatus("正在处理图片……手机拍的大图要几秒，别重复点");
+
+  var bmp = null;
+  decodeImage(f).then(function(src){
+    bmp = src;
+    return Promise.all([shrinkToBlob(src), thumbToBlob(src)]);
+  }).then(function(r){
+    if (bmp && bmp.close) bmp.close();     // ImageBitmap 要手动释放
+    SHOT = { blob: r[0].blob, w: r[0].w, h: r[0].h,
+             thumbBlob: r[1], thumbUrl: URL.createObjectURL(r[1]) };
+    shotBusy = false;
     renderShot();
   }).catch(function(e){
-    if (box) box.innerHTML = '<div class="card flag-bad"><p class="tiny-note">' +
-      escapeHtml(e.message) + '</p></div>';
+    if (bmp && bmp.close) bmp.close();
+    shotBusy = false;
+    showShotStatus(e && e.message ? e.message : "图片处理失败", true);
   });
 }
 
@@ -406,7 +473,7 @@ function renderShot(){
   if (!SHOT) { box.innerHTML = ""; return; }
   var kb = Math.round(SHOT.blob.size / 1024);
   box.innerHTML =
-    '<img src="' + SHOT.thumb + '" alt="化验单预览" ' +
+    '<img src="' + SHOT.thumbUrl + '" alt="化验单预览" ' +
       'style="max-width:100%;border-radius:8px;border:1px solid var(--rule);display:block">' +
     '<p class="tiny-note">' + SHOT.w + '×' + SHOT.h + ' · ' + kb + ' KB' +
       '（已压缩，原图不保留）</p>' +
@@ -414,7 +481,7 @@ function renderShot(){
       '<button class="btn solid" onclick="runVision()">识别这张</button>' +
       '<button class="btn tiny" onclick="takePhoto()">重拍</button>' +
       '<button class="btn tiny" onclick="pickPhoto()">换一张</button>' +
-      '<button class="btn tiny" onclick="SHOT=null;renderShot()">取消</button>' +
+      '<button class="btn tiny" onclick="clearShot();renderShot()">取消</button>' +
     '</div><div id="vis-out"></div>';
 }
 
@@ -429,8 +496,10 @@ function runVision(){
   vlBusy = true;
   out.innerHTML = '<p class="lede">正在识别，约需 10–40 秒……</p>';
 
-  /* 先把图存进去再发请求：识别失败也不能把照片丢了 */
-  callVision(SHOT.dataUrl, ST.diseases).then(function(r){
+  /* 到这一刻才转 base64，而且转的是压缩后那张（几百 KB），不是原图 */
+  blobToDataUrl(SHOT.blob).then(function(dataUrl){
+    return callVision(dataUrl, ST.diseases);
+  }).then(function(r){
     VIS_DRAFT = draftFromVision(r.data, ST.diseases);
     VIS_DRAFT._model = r.model;
     VIS_DRAFT._meta = r.meta || null;

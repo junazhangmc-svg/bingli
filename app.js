@@ -421,7 +421,7 @@ function fallbackCopy(txt){
  * ========================================================================== */
 function newRec(){
   EDIT_ID = null;
-  if (typeof SHOT !== "undefined") SHOT = null;
+  if (typeof clearShot === "function") clearShot();
   if (typeof VIS_DRAFT !== "undefined") VIS_DRAFT = null;
   go("entry");
 }
@@ -664,14 +664,15 @@ function saveEntry(){
     /* 照片跟着记录一起存。存不下（配额满了）也不能让整条记录白填，
        所以图片失败只提示，不回滚。 */
     if (vis && SHOT) {
-      return saveImage(saved.id, SHOT.blob, dataUrlToBlob(SHOT.thumb),
+      return saveImage(saved.id, SHOT.blob, SHOT.thumbBlob,
                        { w: SHOT.w, h: SHOT.h, seq: 0 })
         .then(function(){ return saved; })
         .catch(function(){ toast("记录已存，但原图没能存下（可能空间不足）"); return saved; });
     }
     return saved;
   }).then(function(saved){
-    EDIT_ID = null; VIS_DRAFT = null; SHOT = null; DRAFT = null;
+    EDIT_ID = null; VIS_DRAFT = null; DRAFT = null;
+    if (typeof clearShot === "function") clearShot();
     return refresh().then(function(){
       toast(old ? "已保存修改" : "已保存");
       openRec(saved.id);
@@ -684,7 +685,7 @@ function saveEntry(){
 /* 取消时必须把照片和识别草稿一起丢掉，否则下次新建会带着上一次的残留 */
 function cancelEntry(){
   EDIT_ID = null;
-  if (typeof SHOT !== "undefined") SHOT = null;
+  if (typeof clearShot === "function") clearShot();
   if (typeof VIS_DRAFT !== "undefined") VIS_DRAFT = null;
   go("hist");
 }
