@@ -16,7 +16,7 @@
  * ========================================================================== */
 
 /* 改动本文件的指标、别名、单位或判读时必须递增。启动时会据此回补历史记录。 */
-var DICT_VERSION = "2026.07.28.1";
+var DICT_VERSION = "2026.07.29.1";
 
 /* ---- 复查周期分组 ---------------------------------------------------------
  * days:0 表示没有固定周期（医生开了才查），dueInfo 会跳过。               */
@@ -93,10 +93,28 @@ var IND = [
   exp:"由基因决定，终生基本不变。查一两次知道基线即可，不必频繁复查。",
   max:300, t:"< 300", g:"n", forDis:["hlp","cad"] },
 
+{ k:"lipid_apoa1", n:"载脂蛋白 A1", cat:"血脂", spec:"serum",
+  u:"g/L", units:["g/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["ApoA1","APOA1","ApoA-1","载脂蛋白A1","载脂蛋白A-1","载脂蛋白A"],
+  hints:["血脂","载脂蛋白","生化"],
+  exp:"高密度脂蛋白上的主要蛋白，和 HDL 一样是「越高越好」的那一类。",
+  min:1.0, t:"> 1.0", g:"q", forDis:["hlp","cad"] },
+
+{ k:"lipid_sdldl", n:"小而密低密度脂蛋白 sdLDL-C", cat:"血脂", spec:"serum",
+  u:"mmol/L", units:["mmol/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["sdLDL","sdLDL-C","sd LDL-C","小而密低密度脂蛋白","小而密低密度脂蛋白胆固醇"],
+  hints:["血脂","生化"],
+  exp:"LDL 里颗粒最小、最容易钻进血管壁的那一部分，致病性比普通 LDL 强。",
+  /* 各家实验室方法和区间差异很大，不设统一阈值 —— judge() 缺 min/max 时
+     只显示数值不下结论。宁可不判，也不能判错。 */
+  w:"各实验室参考区间差异较大，本应用不对它下达标判断，只记录趋势",
+  g:"n", forDis:["hlp","cad"] },
+
 /* ===== 血糖 ===== */
 { k:"glucose_fasting", n:"空腹血糖", cat:"血糖", spec:"plasma",
   u:"mmol/L", units:["mmol/L","mg/dL"], vt:"numeric", trend:true,
-  alias:["FPG","FBG","GLU","Glucose","空腹血糖","血糖"], hints:["空腹","血糖","生化"],
+  alias:["FPG","FBG","GLU","Glucose","空腹血糖","血糖","葡萄糖","血清葡萄糖"],
+  hints:["空腹","血糖","生化"],
   exp:"必须空腹 8 小时以上。报告若写明是随机或餐后血糖，不能和这条混在一起看。",
   min:3.9, max:6.1, t:"3.9 – 6.1", g:"q", forDis:["dm","fld"] },
 
@@ -134,6 +152,54 @@ var IND = [
   alias:["TBIL","T-BIL","TBil","总胆红素"], hints:["肝功能","生化"],
   exp:"轻度升高常见于 Gilbert 综合征（良性体质），熬夜、饥饿、感冒时更明显。",
   max:23, t:"≤ 23", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_alp", n:"碱性磷酸酶 ALP", cat:"肝功能", spec:"serum",
+  u:"U/L", units:["U/L","IU/L"], vt:"numeric", trend:true,
+  alias:["ALP","AKP","碱性磷酸酶"], hints:["肝功能","生化"],
+  exp:"胆道阻塞时明显升高；骨骼疾病和青少年生长期也会高。",
+  min:45, max:125, t:"45 – 125", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_dbil", n:"直接胆红素 DBIL", cat:"肝功能", spec:"serum",
+  u:"μmol/L", units:["μmol/L","umol/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["DBIL","D-BIL","DBil","直接胆红素","结合胆红素"], hints:["肝功能","生化"],
+  exp:"升高更多指向胆道排泄环节的问题。",
+  max:8, t:"< 8", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_ibil", n:"间接胆红素 IBIL", cat:"肝功能", spec:"serum",
+  u:"μmol/L", units:["μmol/L","umol/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["IBIL","I-BIL","IBil","间接胆红素","非结合胆红素"], hints:["肝功能","生化"],
+  exp:"单纯它偏高、其余肝功能都正常，多见于 Gilbert 综合征这类良性体质。",
+  max:16, t:"< 16", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_tba", n:"总胆汁酸 TBA", cat:"肝功能", spec:"serum",
+  u:"μmol/L", units:["μmol/L","umol/L"], vt:"numeric", trend:true,
+  alias:["TBA","总胆汁酸","胆汁酸"], hints:["肝功能","生化"],
+  exp:"对肝细胞损伤和胆汁淤积比较敏感，餐后会生理性升高。",
+  max:10, t:"< 10", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_tp", n:"总蛋白 TP", cat:"肝功能", spec:"serum",
+  u:"g/L", units:["g/L","g/dL"], vt:"numeric", trend:true,
+  alias:["TP","TPRO","总蛋白","血清总蛋白"], hints:["肝功能","生化"],
+  exp:"白蛋白加球蛋白。",
+  min:65, max:85, t:"65 – 85", g:"q", forDis:["fld","hbv","ckd"] },
+
+{ k:"liver_alb", n:"白蛋白 ALB", cat:"肝功能", spec:"serum",
+  u:"g/L", units:["g/L","g/dL"], vt:"numeric", trend:true,
+  alias:["ALB","白蛋白","血清白蛋白","清蛋白"], hints:["肝功能","生化"],
+  exp:"肝脏合成能力的核心指标，长期偏低要同时考虑营养和肾脏丢失。",
+  min:40, max:55, t:"40 – 55", g:"q", forDis:["fld","hbv","ckd"] },
+
+{ k:"liver_glb", n:"球蛋白 GLB", cat:"肝功能", spec:"serum",
+  u:"g/L", units:["g/L","g/dL"], vt:"numeric", trend:true,
+  alias:["GLB","GLO","球蛋白","血清球蛋白"], hints:["肝功能","生化"],
+  exp:"慢性炎症和免疫活动时升高。",
+  min:20, max:35, t:"20 – 35", g:"q", forDis:["fld","hbv"] },
+
+{ k:"liver_palb", n:"前白蛋白 PALB", cat:"肝功能", spec:"serum",
+  u:"mg/L", units:["mg/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["PALB","PA","前白蛋白","前清蛋白"], hints:["肝功能","生化"],
+  exp:"半衰期只有两天，比白蛋白更早反映肝脏合成能力和营养状态的变化。",
+  min:200, max:400, t:"200 – 400", g:"q", forDis:["fld","hbv"] },
 
 /* ===== 肾功能 ===== */
 { k:"renal_creatinine", n:"肌酐", cat:"肾功能", spec:"serum",
@@ -175,6 +241,18 @@ var IND = [
   alias:["Na","Na+","钠","血钠","钠离子"], hints:["电解质","生化"],
   exp:"反映体液平衡。",
   min:135, max:145, t:"135 – 145", g:"q", forDis:["ckd","htn"] },
+
+{ k:"electrolyte_calcium", n:"血钙", cat:"电解质", spec:"serum",
+  u:"mmol/L", units:["mmol/L","mg/dL"], vt:"numeric", trend:true,
+  alias:["Ca","Ca2+","钙","血钙","钙离子","总钙"], hints:["电解质","生化"],
+  exp:"受白蛋白影响 —— 白蛋白低的时候，实际有活性的钙可能比测出来的高。",
+  min:2.11, max:2.52, t:"2.11 – 2.52", g:"q", forDis:["ckd"] },
+
+{ k:"electrolyte_chloride", n:"血氯", cat:"电解质", spec:"serum",
+  u:"mmol/L", units:["mmol/L","mEq/L"], vt:"numeric", trend:true,
+  alias:["Cl","Cl-","氯","血氯","氯离子"], hints:["电解质","生化"],
+  exp:"通常跟着血钠一起变化。",
+  min:99, max:110, t:"99 – 110", g:"q", forDis:["ckd"] },
 
 /* ===== 血常规 ===== */
 { k:"cbc_wbc", n:"白细胞计数", cat:"血常规", spec:"whole_blood",
@@ -229,6 +307,21 @@ var IND = [
   exp:"甲状腺激素的主要储备形式。",
   min:12, max:22, t:"12 – 22", g:"h", forDis:["thyca","hypo"] },
 
+{ k:"thyroid_t3", n:"总 T3", cat:"甲状腺功能", spec:"serum",
+  u:"nmol/L", units:["nmol/L","ng/mL","ng/dL"], vt:"numeric", trend:true,
+  /* 注意别名里不能出现「游离三碘甲状腺原氨酸」，那是 FT3。
+     两者单位差一个数量级（nmol/L vs pmol/L），认错会很离谱。 */
+  alias:["T3","总T3","TT3","三碘甲状腺原氨酸","血清三碘甲状腺原氨酸"],
+  hints:["甲功","甲状腺"],
+  exp:"包含了和蛋白结合的部分，所以受蛋白水平影响；判断甲状腺功能主要还是看 FT3、FT4 和 TSH。",
+  min:1.3, max:3.1, t:"1.3 – 3.1", g:"h", forDis:["thyca","hypo"] },
+
+{ k:"thyroid_t4", n:"总 T4", cat:"甲状腺功能", spec:"serum",
+  u:"nmol/L", units:["nmol/L","μg/dL","ug/dL"], vt:"numeric", trend:true,
+  alias:["T4","总T4","TT4","甲状腺素","血清甲状腺素"], hints:["甲功","甲状腺"],
+  exp:"同上，主要作参考。",
+  min:66, max:181, t:"66 – 181", g:"h", forDis:["thyca","hypo"] },
+
 { k:"thyroid_tg", n:"甲状腺球蛋白 Tg", cat:"甲状腺功能", spec:"serum",
   u:"ng/mL", units:["ng/mL","μg/L","ug/L"], vt:"numeric", trend:true,
   /* 注意：裸写的 "Tg" 不放在这里 —— 它和甘油三酯的 "TG" 小写后完全相同，
@@ -258,6 +351,15 @@ var IND = [
   alias:["INS","胰岛素","空腹胰岛素","Insulin"], hints:["胰岛","血糖","内分泌"],
   exp:"配合空腹血糖可以算胰岛素抵抗程度。",
   min:2.6, max:24.9, t:"2.6 – 24.9", g:"y", forDis:["dm"] },
+
+{ k:"vit_d25", n:"25-羟维生素 D", cat:"内分泌", spec:"serum",
+  u:"ng/mL", units:["ng/mL","nmol/L"], vt:"numeric", trend:true,
+  alias:["25-羟维生素D","25羟维生素D","25-OH-VitD","25(OH)D","25-OH-VIT D",
+         "25-羟基维生素D","维生素D"],
+  hints:["内分泌","维生素","骨代谢"],
+  exp:"反映体内维生素 D 储备。缺乏在国内很普遍，尤其是室内工作者和冬季。",
+  min:30, t:"> 30", w:"30 以上为充足，20–30 为不足，20 以下为缺乏",
+  g:"n", forDis:[] },
 
 { k:"enzyme_ck", n:"肌酸激酶 CK", cat:"肌酶", spec:"serum",
   u:"U/L", units:["U/L","IU/L"], vt:"numeric", trend:true,
