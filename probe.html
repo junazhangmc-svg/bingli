@@ -327,6 +327,7 @@ useSynthetic();
       +    '<button class="tiny" onclick="testReach(\'' + p.id + '\')">1 可达性</button>'
       +    '<button class="tiny solid" onclick="testCors(\'' + p.id + '\')">2 跨域</button>'
       +    (p.vision ? '<button class="tiny" onclick="testVision(\'' + p.id + '\')">3 读图</button>' : "")
+      +    '<button class="tiny" onclick="listModels(\'' + p.id + '\')">列出可用模型</button>'
       +    '<button class="tiny" onclick="clearLog(\'' + p.id + '\')">清空日志</button>'
       +  '</div>'
       +  '<div class="log" id="log-' + p.id + '"></div>'
@@ -338,6 +339,55 @@ useSynthetic();
 function prov(id){ for (var i=0;i<PROVIDERS.length;i++) if (PROVIDERS[i].id===id) return PROVIDERS[i]; }
 function res(id){ if (!RESULTS[id]) RESULTS[id] = {}; return RESULTS[id]; }
 function clearLog(id){ el("log-" + id).textContent = ""; }
+
+/* ---------- 列出这个 key 能调的模型 ----------
+ * 「Not found the model xxx or Permission denied」这种报错，靠猜模型名解决
+ * 是最慢的路。OpenAI 兼容接口都有 /models，直接问它要一份权威清单。   */
+function modelsUrl(u){
+  return u.replace(/\/(chat\/completions|text\/chatcompletion_v2|completions)$/, "/models");
+}
+
+function listModels(id){
+  saveInputs(id);
+  var p = prov(id);
+  var key = el("key-" + id).value.trim();
+  if (!key) { logTo(id, "[" + stamp() + "] 列模型需要密钥"); return; }
+  var url = modelsUrl(p.url);
+  logTo(id, "[" + stamp() + "] GET " + url);
+
+  fetch(url, { headers: { "Authorization": "Bearer " + key } })
+    .then(function(r){
+      return r.text().then(function(txt){
+        if (!r.ok) { logTo(id, "  X HTTP " + r.status + "：" + txt.slice(0, 300)); return; }
+        var data = null;
+        try { data = JSON.parse(txt); } catch (e) {
+          logTo(id, "  返回的不是 JSON：" + txt.slice(0, 300)); return;
+        }
+        var arr = (data && (data.data || data.models)) || [];
+        var names = arr.map(function(m){
+          return typeof m === "string" ? m : (m.id || m.name || JSON.stringify(m));
+        }).sort();
+        if (!names.length) { logTo(id, "  返回里没有模型列表：" + txt.slice(0, 300)); return; }
+
+        /* 名字里带 vision / vl / -v 的才可能读图 */
+        var vis = names.filter(function(n){ return /vision|vl|视觉/i.test(n); });
+        logTo(id, "  共 " + names.length + " 个模型：");
+        logTo(id, "  " + names.join("\n  "));
+        if (vis.length) {
+          logTo(id, "\n  >> 可能能读图的：\n  " + vis.join("\n  "));
+          logTo(id, "  把上面某一个填进「模型名」，再点「3 读图」。");
+        } else {
+          logTo(id, "\n  >> 这份清单里没有带 vision/vl 字样的模型。");
+          logTo(id, "  说明这个 key 现在调不到视觉模型 —— 可能是账号等级不够、");
+          logTo(id, "  或者充值进的是只含文本模型的套餐。名字里带 vision 的才能读图。");
+        }
+      });
+    })
+    .catch(function(e){
+      logTo(id, "  X " + e.name + "：" + e.message);
+      logTo(id, "  -> 该厂商可能不提供 /models 接口，或跨域被拦。");
+    });
+}
 function saveInputs(id){
   lsSet("bl_probe_model_" + id, el("model-" + id).value.trim());
   lsSet("bl_probe_key_" + id, el("key-" + id).value.trim());
