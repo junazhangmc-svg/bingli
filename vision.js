@@ -32,7 +32,12 @@ var VL_PROVIDERS = [
     note:"聚合平台，模型可换。注册：siliconflow.cn" },
   { id:"step",    name:"阶跃星辰",
     url:"https://api.stepfun.com/v1/chat/completions",
-    model:"step-1v-8k", maxTokens:4000, note:"" }
+    model:"step-1v-8k", maxTokens:4000, note:"" },
+  { id:"kimi",    name:"Kimi（月之暗面）",
+    url:"https://api.moonshot.cn/v1/chat/completions",
+    model:"moonshot-v1-8k-vision-preview", maxTokens:4000,
+    note:"Kimi 有视觉模型，但它家接口历来不给浏览器发跨域头，很可能连不上。" +
+         "先去探针页测「2 跨域」，通过了再选它。注册：platform.moonshot.cn" }
 ];
 
 function vlProvider(){
@@ -330,7 +335,20 @@ function callVision(dataUrl, diseases){
           (p.maxTokens || 4000) + " token），结果被截断了。\n" +
           "两个办法：把单子分成几张分别拍（推荐），" +
           "或者换一个输出上限更高的模型（去「更多 → 拍照识别」改模型名）。");
-      return { data: parseJsonLoose(content), model: (data && data.model) || vlModel() };
+      /* 原文一律带回去。识别效果不好时，「模型到底返回了什么」是唯一能
+         区分「读不动表格」和「程序解析错了」的证据，不能只留在控制台。 */
+      var meta = {
+        raw: content,
+        model: (data && data.model) || vlModel(),
+        finish: ch.finish_reason || "",
+        usage: (data && data.usage) || null
+      };
+      try {
+        return { data: parseJsonLoose(content), model: meta.model, meta: meta };
+      } catch (pe) {
+        pe.rawContent = content;      // 解析失败时也要能看到原文
+        throw pe;
+      }
     });
   }).catch(function(e){
     clearTimeout(timer);
@@ -413,6 +431,7 @@ function runVision(){
   callVision(SHOT.dataUrl, ST.diseases).then(function(r){
     VIS_DRAFT = draftFromVision(r.data, ST.diseases);
     VIS_DRAFT._model = r.model;
+    VIS_DRAFT._meta = r.meta || null;
     vlBusy = false;
     renderEntry(visionToForm(VIS_DRAFT));
     setTimeout(function(){
@@ -450,11 +469,35 @@ function visionToForm(d){
 function visionWarnBlock(d){
   if (!d) return "";
   var w = d.warnings || {};
-  var h = '<div id="vis-warn" class="card flag-warn">';
-  h += '<h3>识别完了，但必须逐项核对</h3>';
-  h += '<p class="tiny-note">视觉模型在密集表格上最容易犯的错是<b>串行</b> —— ' +
-       '项目名对、数值取自隔壁行。这种错比漏读危险得多，' +
-       '所以下面每一项旁边都附了它在原文里的出处。</p>';
+  var empty = d.obs.length === 0;
+
+  /* 一项都没读出来 = 这次识别其实失败了。
+     以前这里照样显示「识别完了」再交一张空表单，等于让人白等一场还得自己
+     从头填。必须当成失败讲清楚，并直接给出下一步怎么办。 */
+  var h = '<div id="vis-warn" class="card ' + (empty ? "flag-bad" : "flag-warn") + '">';
+
+  if (empty) {
+    h += '<h3>没能读出任何检查项目</h3>';
+    h += '<p class="tiny-note">表头信息（医院、日期这些）读到了，但表格里一项都没读出来。' +
+         '常见原因按可能性排：</p>';
+    h += '<p class="tiny-note">' +
+      '<b>1. 模型能力不够。</b>免费的 glm-4v-flash 读密集中文表格确实吃力。' +
+      '换 <b>阿里百炼的 qwen-vl-max-latest</b>（中文表格识别最好的一档），' +
+      '或把智谱的模型名改成 <b>glm-4v-plus</b>。去「更多 → 拍照识别」改。<br>' +
+      '<b>2. 图不够清楚。</b>微信里存过的图会被压缩，小字容易糊。' +
+      '用原始拍摄的那张，或直接对着纸质单子重拍。<br>' +
+      '<b>3. 一张拍太多。</b>把单子分成两三段分别拍，每张只拍几行，准确率会明显提高。</p>';
+    h += '<div class="row">' +
+      '<button class="btn tiny" onclick="go(\'more\')">去换模型</button>' +
+      '<button class="btn tiny" onclick="takePhoto()">重拍</button>' +
+      '<button class="btn tiny" onclick="pickPhoto()">换一张</button>' +
+      '</div>';
+  } else {
+    h += '<h3>识别完了，但必须逐项核对</h3>';
+    h += '<p class="tiny-note">视觉模型在密集表格上最容易犯的错是<b>串行</b> —— ' +
+         '项目名对、数值取自隔壁行。这种错比漏读危险得多，' +
+         '所以下面每一项旁边都附了它在原文里的出处。</p>';
+  }
 
   var bad = [];
   if (w.noDate) bad.push("没认出报告日期，请自己填");
@@ -481,9 +524,35 @@ function visionWarnBlock(d){
       '</div>';
   }
   h += '</details>';
+
+  /* 模型原文。识别效果不好时这是唯一能分清「模型读不动」和「程序解析错了」
+     的证据 —— 藏在控制台里等于没有。 */
+  if (d._meta && d._meta.raw) {
+    var m = d._meta;
+    h += '<details class="fold"><summary>模型原始返回（排查用）</summary>';
+    h += '<p class="tiny-note">模型 ' + escapeHtml(m.model || "") +
+         (m.finish ? " · 结束原因 " + escapeHtml(m.finish) : "") +
+         (m.usage && m.usage.completion_tokens
+            ? " · 输出 " + m.usage.completion_tokens + " token" : "") + '</p>';
+    h += '<pre class="log">' + escapeHtml(m.raw.slice(0, 4000)) + '</pre>';
+    h += '<div class="row"><button class="btn tiny" onclick="copyVisionRaw()">复制原文</button></div>';
+    h += '</details>';
+  }
+
   h += '<p class="tiny-note">照片会和这条记录一起存下来，' +
        '以后任何时候都能翻出原件对照。由 ' + escapeHtml(d._model || "视觉模型") + ' 识别。</p>';
   return h + '</div>';
+}
+
+function copyVisionRaw(){
+  if (!VIS_DRAFT || !VIS_DRAFT._meta) return;
+  var txt = "模型：" + (VIS_DRAFT._meta.model || "") +
+            "\n结束原因：" + (VIS_DRAFT._meta.finish || "") +
+            "\n\n" + VIS_DRAFT._meta.raw;
+  if (navigator.clipboard && window.isSecureContext)
+    navigator.clipboard.writeText(txt).then(function(){ toast("已复制"); },
+                                           function(){ toast("复制失败，请长按选择"); });
+  else toast("复制失败，请长按选择");
 }
 
 /* 用户在确认表单里改过值之后，把识别出来的 obs 和表单里的 v 对齐。
