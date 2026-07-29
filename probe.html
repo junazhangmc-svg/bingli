@@ -374,12 +374,15 @@ function listModels(id){
         logTo(id, "  共 " + names.length + " 个模型：");
         logTo(id, "  " + names.join("\n  "));
         if (vis.length) {
-          logTo(id, "\n  >> 可能能读图的：\n  " + vis.join("\n  "));
-          logTo(id, "  把上面某一个填进「模型名」，再点「3 读图」。");
+          logTo(id, "\n  >> 名字里带 vision/vl 的：\n  " + vis.join("\n  "));
+          logTo(id, "  把其中一个填进「模型名」，再点「3 读图」。");
         } else {
-          logTo(id, "\n  >> 这份清单里没有带 vision/vl 字样的模型。");
-          logTo(id, "  说明这个 key 现在调不到视觉模型 —— 可能是账号等级不够、");
-          logTo(id, "  或者充值进的是只含文本模型的套餐。名字里带 vision 的才能读图。");
+          logTo(id, "\n  >> 没有名字带 vision/vl 的模型。");
+          /* 这只是按名字猜的，不能当结论 —— 新一代旗舰模型往往本身就是多模态的，
+             名字里并不写 vision。唯一可靠的判定是真发一张图过去试。 */
+          logTo(id, "  但这只是按名字判断，不能当结论：不少新模型本身就是多模态的，");
+          logTo(id, "  名字里并不写 vision。挑一个最新的填进「模型名」，点「3 读图」实测。");
+          logTo(id, "  真读不了的话，接口会明确报「不支持图片输入」之类的错。");
         }
       });
     })
@@ -480,7 +483,7 @@ var VIS_PROMPT =
   "绝对不要根据参考范围自己推断。没有标记就填 null。\n" +
   "observationCount 必须等于 observations 的实际条数。";
 
-function testVision(id){
+function testVision(id, temp){
   saveInputs(id);
   var p = prov(id);
   var key = el("key-" + id).value.trim();
@@ -488,13 +491,20 @@ function testVision(id){
   if (!key) { logTo(id, "[" + stamp() + "] 3 需要密钥，先填一个"); return; }
   if (!IMG) { logTo(id, "[" + stamp() + "] 3 还没准备测试图片"); return; }
 
+  /* 结构化抽取要的是确定性输出，所以默认 temperature=0；
+     但有的模型（如 kimi-k3）只接受 1，会直接 400 —— 那种情况下请求在
+     还没轮到判断能不能读图之前就被拒了，会误判成「不支持视觉」。
+     所以碰到这个错要自动换 1 重试一次。 */
+  if (temp == null) temp = 0;
+
   var rawBox = el("raw-" + id);
   var raw = !!(rawBox && rawBox.checked);
   var imgUrl = raw ? IMG.replace(/^data:image\/\w+;base64,/, "") : IMG;
 
   setPill(id, "vis", "p-idle", "3 读图 …");
   logTo(id, "[" + stamp() + "] 3 发送图片（" + Math.round(IMG.length*0.75/1024) + " KB，"
-           + (raw ? "裸 base64" : "data URI") + "）model=" + model);
+           + (raw ? "裸 base64" : "data URI") + "）model=" + model
+           + " temperature=" + temp);
 
   var ctl = new AbortController();
   var timer = setTimeout(function(){ ctl.abort(); }, 120000);
@@ -504,7 +514,7 @@ function testVision(id){
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + key },
     body: JSON.stringify({
-      model: model, temperature: 0, max_tokens: (p.maxTokens || 2000),
+      model: model, temperature: temp, max_tokens: (p.maxTokens || 2000),
       messages: [{ role:"user", content: [
         { type:"text", text: VIS_PROMPT },
         { type:"image_url", image_url:{ url: imgUrl } }
@@ -518,9 +528,18 @@ function testVision(id){
     return r.text().then(function(txt){
       logTo(id, "  HTTP " + r.status + " · " + Math.round(ms/1000) + "s");
       if (!r.ok) {
+        /* 参数被拒 ≠ 不支持视觉。换 temperature=1 再试一次，
+           不然会把「参数不合规」误判成「这个模型读不了图」。 */
+        if (/temperature/i.test(txt) && temp !== 1) {
+          logTo(id, "  该模型只接受 temperature=1，自动换成 1 重试");
+          testVision(id, 1);
+          return;
+        }
         setPill(id, "vis", "p-bad", "3 读图 X");
         res(id).vision = "HTTP " + r.status;
         logTo(id, "  X " + txt.slice(0, 500));
+        if (/image|vision|multimodal|不支持/i.test(txt))
+          logTo(id, "  -> 报错里提到了图片/视觉，这个模型多半确实读不了图。");
         summarize(); return;
       }
       var content = "";

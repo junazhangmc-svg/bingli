@@ -177,7 +177,7 @@ function buildUserMsg(rs, disIds){
 /* ==========================================================================
  * 调用
  * ========================================================================== */
-function runAI(disIds){
+function runAI(disIds, temp){
   if (aiBusy) return;
   var key = lsGet(LS.dsKey);
   var out = document.getElementById("ai-out");
@@ -202,7 +202,8 @@ function runAI(disIds){
       "Authorization": "Bearer " + key
     },
     body: JSON.stringify({
-      model: DS_MODEL, max_tokens: 2000, temperature: 0.3,
+      /* 有的模型只接受 temperature=1（如 kimi-k3），碰到就在下面自动重试 */
+      model: DS_MODEL, max_tokens: 2000, temperature: (temp == null ? 0.3 : temp),
       messages: [{ role:"system", content: SYS_PROMPT },
                  { role:"user",   content: userMsg }]
     }),
@@ -214,6 +215,11 @@ function runAI(disIds){
       var data = null;
       try { data = JSON.parse(txt); } catch (e) { data = null; }
       if (!res.ok) {
+        /* 参数被拒就换 temperature=1 重来，别把它当成服务不可用报给用户 */
+        if (/temperature/i.test(txt) && temp !== 1) {
+          aiBusy = false;
+          return runAI(disIds, 1);
+        }
         var msg = res.status === 401 ? "密钥无效或已失效，去下面「设置与说明」里重填一次"
                 : res.status === 402 ? "DeepSeek 账户余额不足"
                 : res.status === 429 ? "请求太频繁，等一会儿再试"

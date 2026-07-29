@@ -314,17 +314,22 @@ function draftFromVision(data, diseases){
 var VL_TIMEOUT = 150000;
 var vlBusy = false;
 
-function callVision(dataUrl, diseases){
+function callVision(dataUrl, diseases, temp){
   var p = vlProvider(), key = lsGet(LS.vlKey);
   if (!p) return Promise.reject(new Error("还没选识别服务"));
   if (!key) return Promise.reject(new Error("还没填识别服务的密钥"));
+
+  /* 结构化抽取要确定性输出，所以默认 temperature=0。
+     但有的模型（如 kimi-k3）只接受 1，会直接 400 —— 那样请求在还没读图
+     之前就被拒了。碰到这个错自动换 1 重试一次，见下面的 400 分支。 */
+  if (temp == null) temp = 0;
 
   var ctl = new AbortController();
   var timer = setTimeout(function(){ ctl.abort(); }, VL_TIMEOUT);
 
   var body = {
     model: vlModel(),
-    temperature: 0,
+    temperature: temp,
     max_tokens: (p.maxTokens || 4000),
     messages: [{ role:"user", content: [
       { type:"text", text: visionPrompt(diseases) },
@@ -347,6 +352,10 @@ function callVision(dataUrl, diseases){
       /* MiniMax 之类认证失败也返回 200，错误藏在 body 里，光看状态码会漏 */
       var inBody = data && data.base_resp && data.base_resp.status_code;
       if (!res.ok || inBody) {
+        /* 参数被拒 ≠ 不支持视觉。换 temperature=1 重试一次，
+           否则会把「参数不合规」当成「这个模型读不了图」报给用户。 */
+        if (/temperature/i.test(txt) && temp !== 1)
+          return callVision(dataUrl, diseases, 1);
         var msg = res.status === 401 || inBody === 1004
                     ? "密钥无效，去「更多 → 拍照识别」重填"
                 : res.status === 402 ? "账户余额不足"
@@ -629,11 +638,19 @@ function copyVisionRaw(){
 /* 用户在确认表单里改过值之后，把识别出来的 obs 和表单里的 v 对齐。
  * 表单是最终真相（人改过），但 obs 里的原文出处要留着 ——
  * 那是以后回查「这个数当初是从哪一行读出来的」唯一的线索。 */
-function reconcileObs(visionObs, v){
+/* xtra 的语义要分清，否则会静默丢数据：
+ *   没传（undefined）= 调用方不管字典外的项目 → 原样保留，一个不动
+ *   传了数组         = 调用方接管了 → 以它为准重建（人可能改过值或清空）
+ * 默认必须是「保留」而不是「丢弃」。 */
+function reconcileObs(visionObs, v, xtra){
+  var manage = Array.isArray(xtra);
   var out = [], seen = {};
   for (var i = 0; i < (visionObs || []).length; i++) {
     var o = visionObs[i];
-    if (o.k.indexOf("x:") === 0) { out.push(o); continue; }  // 未识别的原样留着
+    if (o.k.indexOf("x:") === 0) {
+      if (!manage) out.push(o);      // 没人管就原样留着
+      continue;                      // 有人管就等下面按 xtra 重建
+    }
     if (v[o.k] == null || v[o.k] === "") continue;           // 人删掉了
     if (seen[o.k]) continue;
     seen[o.k] = 1;
@@ -650,6 +667,16 @@ function reconcileObs(visionObs, v){
                unit: ind2 ? ind2.u : "", refText: ind2 ? (ind2.t || "") : "",
                refLow:null, refHigh:null, flag:null, sec: ind2 ? ind2.cat : "",
                conf:1, quote:"", src:"manual" });
+  }
+  /* 字典外的项目。k 用 "x:" 前缀，不进趋势、不参与判读，
+     但数值和原文一个都不丢 —— 数据只有一份，宁可难看也不能少。 */
+  for (var n = 0; n < (xtra || []).length; n++) {
+    var e = xtra[n];
+    if (!e || !e.name || e.val == null || e.val === "") continue;
+    out.push({ k: "x:" + compactKeyKeepParen(e.name), name: e.name,
+               raw: String(e.val), val: String(e.val), unit: e.unit || "",
+               refText:"", refLow:null, refHigh:null, flag:null, sec:"",
+               conf:0, quote: e.quote || "", src:"vision-unmapped" });
   }
   return out;
 }

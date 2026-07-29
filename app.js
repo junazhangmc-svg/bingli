@@ -336,6 +336,27 @@ function verdictRows(r){
            '</div>';
     }
   }
+  h += unmappedRows(r);
+  return h;
+}
+
+/* 字典外的项目。存下来了却不显示，等于没存 —— 打印给医生时它们同样要在。 */
+function unmappedRows(r){
+  var list = (r.obs || []).filter(function(o){
+    return o && o.k && o.k.indexOf("x:") === 0 && o.val != null && o.val !== "";
+  });
+  if (!list.length) return "";
+  var h = '<div class="grp-title">其他项目 <span class="pill p-idle">未判读</span></div>';
+  for (var i = 0; i < list.length; i++) {
+    var o = list[i];
+    h += '<div class="v-row">' +
+      '<div class="v-n">' + escapeHtml(o.name) + '</div>' +
+      '<div class="v-v">' + escapeHtml(o.val) +
+        (o.unit ? ' ' + escapeHtml(o.unit) : "") + '</div>' +
+      '<div class="v-t">字典里没有，不判达标</div>' +
+      (o.quote ? '<div class="v-note">原文：' + escapeHtml(o.quote) + '</div>' : "") +
+      '</div>';
+  }
   return h;
 }
 
@@ -435,8 +456,46 @@ function curRec(){
 }
 
 /* 切分类会重新渲染，所以先把已填内容从 DOM 里读回来当草稿传进去 */
+/* 字典里没有的项目。
+ * 这些项目以前只出现在折叠的核对块里：看得见、改不了、也算不进「填了东西」，
+ * 于是一张单子全是新项目时，保存会被挡住，识别出来的数据整个卡死在中间。
+ * 现在把它们渲染成可编辑的行，和正式指标一样能改、能存。
+ * 存下来的 k 是 "x:" 前缀，不进趋势、不参与判读，但原文和数值一个都不丢。 */
+function unknownObs(base, r){
+  var src = (base && base._vision && base._vision.obs) || (r ? r.obs : null) || [];
+  return src.filter(function(o){ return o && o.k && o.k.indexOf("x:") === 0; });
+}
+
+function extraBlock(base, r){
+  var list = unknownObs(base, r);
+  if (!list.length) return "";
+  var h = '<h2 class="sec">字典里还没有的项目</h2><div class="card flag-warn">';
+  h += '<p class="tiny-note">这 ' + list.length + ' 项我暂时不认识，' +
+       '所以不会参与达标判断、也不进趋势图 —— 但会原样存进这条记录，' +
+       '打印时也会列出来。数值可以直接改。</p>';
+  for (var i = 0; i < list.length; i++) {
+    var o = list[i];
+    h += '<div class="field">' +
+      '<label for="in-x-val-' + i + '">' + escapeHtml(o.name) +
+        (o.unit ? ' <span class="v-t">' + escapeHtml(o.unit) + '</span>' : "") + '</label>' +
+      '<input type="text" inputmode="decimal" id="in-x-val-' + i + '" value="' +
+        escapeHtml(o.val == null ? "" : o.val) + '" placeholder="留空则不保存这一项">' +
+      '<input type="hidden" id="in-x-name-' + i + '" value="' + escapeHtml(o.name) + '">' +
+      '<input type="hidden" id="in-x-unit-' + i + '" value="' + escapeHtml(o.unit || "") + '">' +
+      '<input type="hidden" id="in-x-quote-' + i + '" value="' + escapeHtml(o.quote || "") + '">' +
+      (o.quote ? '<div class="v-note">原文：' + escapeHtml(o.quote) + '</div>' : "") +
+      '</div>';
+  }
+  /* 显式记下条数，读表单时按它循环。
+     靠 getElementById 返回 null 来终止是无界循环，不该写。 */
+  h += '<input type="hidden" id="in-x-count" value="' + list.length + '">';
+  h += '<p class="tiny-note">经常遇到的项目告诉我，我加进字典，' +
+       '以后它们就能判达标、能画趋势了。</p>';
+  return h + '</div>';
+}
+
 function readForm(){
-  var d = { v: {} };
+  var d = { v: {}, xtra: [] };
   var ids = ["date","type","hospital","dept","title","dx","findings",
              "impression","recommendation","note"];
   for (var i = 0; i < ids.length; i++) {
@@ -447,6 +506,22 @@ function readForm(){
     var e2 = document.getElementById("in-k-" + IND[j].k);
     if (e2 && e2.value !== "") d.v[IND[j].k] = e2.value;
   }
+  /* 字典外的项目。名字和原文是隐藏字段，值可编辑；留空即视为不要这一项。 */
+  var cntEl = document.getElementById("in-x-count");
+  var xn = cntEl ? parseInt(cntEl.value, 10) : 0;
+  if (!isFinite(xn) || xn < 0) xn = 0;
+  for (var x = 0; x < xn; x++) {
+    var nameEl = document.getElementById("in-x-name-" + x);
+    if (!nameEl || !nameEl.value) continue;
+    var valEl = document.getElementById("in-x-val-" + x);
+    var vv = valEl ? valEl.value.trim() : "";
+    if (!vv) continue;
+    var uEl = document.getElementById("in-x-unit-" + x);
+    var qEl = document.getElementById("in-x-quote-" + x);
+    d.xtra.push({ name: nameEl.value, val: vv,
+                  unit: uEl ? uEl.value : "", quote: qEl ? qEl.value : "" });
+  }
+
   d.dis = [];
   for (var m = 0; m < ST.diseases.length; m++) {
     var c = document.getElementById("dis-" + ST.diseases[m].id);
@@ -574,6 +649,8 @@ function renderEntry(draft){
     h += '</div>';
   }
 
+  h += extraBlock(base, r);
+
   h += '<h2 class="sec">报告文字</h2>';
   h += '<div class="card">';
   h += '<label for="in-dx">临床诊断</label><input type="text" id="in-dx" value="' +
@@ -631,16 +708,21 @@ function saveEntry(){
     } else v[it.k] = raw;
   }
 
-  var filled = Object.keys(v).length;
+  /* 字典外的项目同样算「填了东西」。不算的话，一张单子上全是新项目时
+     保存会被挡住，识别出来的数据就整个卡死在中间 —— 看得见、存不下。 */
+  var xtra = d.xtra || [];
+  var filled = Object.keys(v).length + xtra.length;
   var hasText = !!(d.title || d.impression || d.findings || d.note || d.dx);
   if (!filled && !hasText) { toast("至少填一个项目或写点文字"); return; }
 
   var old = curRec();
   /* 拍照识别来的记录：保留每一项的原文出处，但值以表单为准（人可能改过） */
   var vis = (VIS_DRAFT && !EDIT_ID) ? VIS_DRAFT : null;
+  /* 编辑旧记录时要接着用它原来的 obs，否则原文出处会被整个抹掉 */
+  var baseObs = vis ? vis.obs : (old ? old.obs : null);
   var rec = {
     id: EDIT_ID || undefined,
-    obs: vis ? reconcileObs(vis.obs, v) : undefined,
+    obs: baseObs ? reconcileObs(baseObs, v, xtra) : undefined,
     date: d.date, type: d.type,
     title: d.title || "", hospital: d.hospital || "", dept: d.dept || "",
     dx: d.dx || "", findings: d.findings || "", impression: d.impression || "",
