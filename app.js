@@ -899,6 +899,82 @@ function removeMed(id){
 /* ==========================================================================
  * 更多：疾病、个人目标、备份、存储
  * ========================================================================== */
+/* ==========================================================================
+ * 未识别项目汇总
+ *
+ * 扩字典最省事的办法不是去抄一份通用表，而是让应用自己把「实际遇到过、
+ * 但字典里没有」的项目攒起来。攒出来的一定是你真的会查的项目，
+ * 而不是照着教科书补一堆一辈子用不上的。
+ * ========================================================================== */
+function unmappedStats(){
+  var m = {};
+  for (var i = 0; i < ST.records.length; i++) {
+    var r = ST.records[i];
+    for (var j = 0; j < (r.obs || []).length; j++) {
+      var o = r.obs[j];
+      if (!o || !o.k || o.k.indexOf("x:") !== 0) continue;
+      if (o.val == null || o.val === "") continue;
+      if (!m[o.k]) m[o.k] = { name:o.name, unit:o.unit || "", n:0,
+                              vals:[], refText:o.refText || "" };
+      m[o.k].n++;
+      if (m[o.k].vals.length < 3) m[o.k].vals.push(o.val + (o.unit ? " " + o.unit : ""));
+      if (!m[o.k].refText && o.refText) m[o.k].refText = o.refText;
+    }
+  }
+  var out = [];
+  for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) out.push(m[k]);
+  /* 出现次数多的排前面 —— 那些才值得优先加进字典 */
+  return out.sort(function(a, b){ return b.n - a.n; });
+}
+
+function unmappedSummary(){
+  var list = unmappedStats();
+  if (!list.length) return "";
+  var h = '<h2 class="sec">字典里还没有的项目</h2><div class="card">';
+  h += '<p class="lede">这 ' + list.length + ' 个项目你的报告里出现过，但我不认识。' +
+       '它们照常存着、照常打印，只是<b>不参与达标判断、不进趋势图</b>。</p>';
+  h += '<p class="tiny-note">按出现次数排序 —— 排在前面的才值得优先加进字典。</p>';
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    h += '<div class="v-row">' +
+      '<div class="v-n">' + escapeHtml(e.name) +
+        ' <span class="pill p-idle">' + e.n + ' 次</span></div>' +
+      '<div class="v-v">' + escapeHtml(e.vals.join("、")) + '</div>' +
+      (e.refText ? '<div class="v-t">报告参考范围 ' + escapeHtml(e.refText) + '</div>' : '<div></div>') +
+      '</div>';
+  }
+  h += '<div class="row"><button class="btn" onclick="copyUnmapped()">复制这份清单</button></div>';
+  h += '<details class="fold"><summary>为什么不干脆抄一份通用参考区间表</summary>' +
+    '<p class="tiny-note">中国的检验参考区间是<b>按实验室定</b>的 —— 同一个项目，' +
+    '不同医院、不同仪器、不同检测方法，范围能差出一截。' +
+    '所以任何通用表格都不如化验单上自己印的那一行「参考范围」权威，' +
+    '而那一行应用已经抽出来了（上面就显示着）。<br><br>' +
+    '要查权威资料的话：参考区间看卫健委行业标准 <b>WS/T 404</b> 系列（生化）' +
+    '和 <b>WS/T 405</b>（血常规）；项目的标准命名和常见缩写看 <b>LOINC</b>（有官方中文翻译）。<br><br>' +
+    '注意区分：参考区间是「健康人群的范围」，治疗目标是「你这个病该控到多少」，' +
+    '两者不是一回事 —— 后者在「个人目标」里单独设。</p></details>';
+  return h + '</div>';
+}
+
+function copyUnmapped(){
+  var list = unmappedStats();
+  if (!list.length) { toast("没有未识别的项目"); return; }
+  var lines = ["字典里还没有的项目（按出现次数排序）", ""];
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    lines.push("- " + e.name +
+      "｜出现 " + e.n + " 次" +
+      "｜示例值 " + e.vals.join("、") +
+      (e.refText ? "｜报告参考范围 " + e.refText : "｜报告未印参考范围"));
+  }
+  var txt = lines.join("\n");
+  if (navigator.clipboard && window.isSecureContext)
+    navigator.clipboard.writeText(txt).then(
+      function(){ toast("已复制 " + list.length + " 项"); },
+      function(){ toast("复制失败，请长按选择"); });
+  else toast("复制失败，请长按选择");
+}
+
 function renderMore(){
   var h = "";
 
@@ -908,6 +984,8 @@ function renderMore(){
        '<div class="row"><button class="btn solid" onclick="go(\'print\')">去打印页</button></div></div>';
 
   h += (typeof vlSettingsBlock === "function") ? vlSettingsBlock() : "";
+
+  h += unmappedSummary();
 
   h += '<h2 class="sec">备份</h2>';
   h += '<div class="card"><p class="lede">数据只存在这台手机里。' +
