@@ -156,7 +156,7 @@ var PROVIDERS = [
   { id:"kimi", name:"Kimi（月之暗面）",
     url:"https://api.moonshot.cn/v1/chat/completions",
     model:"moonshot-v1-8k-vision-preview", vision:true,
-    note:"Kimi 确实有视觉模型。但它家接口历来不给浏览器发跨域头 —— 这一栏就是来验证这一点的。" },
+    note:"2026-07-29 实测跨域可用（此前一度以为它不发跨域头，已证伪）。上下文报超长就换 moonshot-v1-32k-vision-preview。" },
   { id:"minimax", name:"MiniMax",
     url:"https://api.minimax.chat/v1/text/chatcompletion_v2",
     model:"MiniMax-Text-01", vision:true, note:"" },

@@ -2,9 +2,11 @@
 /* ==========================================================================
  * vision.js — 拍照识别
  *
- * 探针结论（2026-07-28，从 GitHub Pages 实测）：智谱、阿里百炼、硅基流动、
- * 阶跃星辰、MiniMax 都放行浏览器直连，火山方舟豆包不放行。所以这里直连，
+ * 探针结论（从 GitHub Pages 实测）：智谱、阿里百炼、硅基流动、阶跃星辰、
+ * MiniMax、Kimi 都放行浏览器直连，只有火山方舟豆包不放行。所以这里直连，
  * 不建代理。
+ * （Kimi 2026-07-29 实测通过 —— 此前项目里一度认为它不发跨域头，那个结论
+ *  已被证伪，不要再据此排除它。）
  *
  * 贯穿这个文件的一条原则：**先存图，再发请求**。
  * 识别失败、超时、断网、模型胡说八道，代价都只是「要手动填」，
@@ -36,8 +38,8 @@ var VL_PROVIDERS = [
   { id:"kimi",    name:"Kimi（月之暗面）",
     url:"https://api.moonshot.cn/v1/chat/completions",
     model:"moonshot-v1-8k-vision-preview", maxTokens:4000,
-    note:"Kimi 有视觉模型，但它家接口历来不给浏览器发跨域头，很可能连不上。" +
-         "先去探针页测「2 跨域」，通过了再选它。注册：platform.moonshot.cn" }
+    note:"2026-07-29 实测跨域可用。如果报上下文超长，把模型名改成 " +
+         "moonshot-v1-32k-vision-preview。注册：platform.moonshot.cn" }
 ];
 
 function vlProvider(){
