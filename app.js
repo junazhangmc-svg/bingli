@@ -667,7 +667,13 @@ function renderEntry(draft){
        escapeHtml(val("note")) + '</textarea>';
   h += '</div>';
 
-  h += '<div class="row"><button class="btn" onclick="cancelEntry()">取消</button></div>';
+  /* 页内也放一个保存按钮，不只依赖底部那个悬浮的。
+     手机上日期选择器或键盘弹出时，悬浮按钮可能被挡住、或者第一次点击
+     只是收起了选择器 —— 表现就是「点了没反应」。页内按钮不受这个影响。 */
+  h += '<div class="row">' +
+       '<button class="btn solid" onclick="saveEntry()">' +
+         (r ? "保存修改" : "保存这条记录") + '</button>' +
+       '<button class="btn" onclick="cancelEntry()">取消</button></div>';
 
   document.getElementById("v-entry").innerHTML = h;
   setFab(r ? "保存修改" : "保存这条记录", saveEntry);
@@ -690,7 +696,17 @@ function updateSug(){
     : "";
 }
 
+/* 保存按钮点了没反应，是最难查的一类问题 —— 同步异常会静默吞掉整个动作，
+   人只会觉得「按钮坏了」。这里统一兜住，任何异常都变成看得见的提示。 */
 function saveEntry(){
+  try { saveEntryInner(); }
+  catch (e) {
+    toast("保存时出错：" + (e && e.message || e));
+    if (window.console) console.error("saveEntry", e);
+  }
+}
+
+function saveEntryInner(){
   var d = readForm();
   if (!isDate(d.date)) { toast("请先填报告日期"); return; }
 
@@ -742,7 +758,13 @@ function saveEntry(){
   if (!old || old.recommendation !== rec.recommendation) rec.recheckDue = null;
   else rec.recheckDue = old.recheckDue;
 
-  saveRecord(rec).then(function(saved){
+  /* 只有这一段的失败才叫「保存失败」。
+     以前整条链共用一个 catch，结果存盘明明成功了，
+     后面刷新或跳转出一点问题就报「保存失败」—— 说了假话，还会让人重存一遍。 */
+  saveRecord(rec).catch(function(e){
+    toast("保存失败：" + (e && e.message || e));
+    throw { _handled: true };
+  }).then(function(saved){
     /* 照片跟着记录一起存。存不下（配额满了）也不能让整条记录白填，
        所以图片失败只提示，不回滚。 */
     if (vis && SHOT) {
@@ -755,12 +777,18 @@ function saveEntry(){
   }).then(function(saved){
     EDIT_ID = null; VIS_DRAFT = null; DRAFT = null;
     if (typeof clearShot === "function") clearShot();
-    return refresh().then(function(){
-      toast(old ? "已保存修改" : "已保存");
-      openRec(saved.id);
-    });
+    toast(old ? "已保存修改" : "已保存");
+    /* 到这里数据已经落盘了。后面只是刷新界面和跳转，
+       出问题也绝不能说成「保存失败」。 */
+    return refresh().then(function(){ openRec(saved.id); })
+      .catch(function(e){
+        toast("已保存，但页面没刷新出来，回列表看一下");
+        if (window.console) console.error("post-save render failed", e);
+      });
   }).catch(function(e){
-    toast("保存失败：" + (e && e.message || e));
+    if (e && e._handled) return;
+    toast("出错了：" + (e && e.message || e));
+    if (window.console) console.error(e);
   });
 }
 
