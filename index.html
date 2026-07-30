@@ -292,6 +292,8 @@ details.hrec[open] .h-prev{display:none}
   align-items:start; padding:10px 2px; border-bottom:1px solid var(--rule-soft);
   cursor:pointer; min-height:56px}
 .pdf-page:last-of-type{border-bottom:none}
+/* 选中的页要一眼看得出来，否则「能多选」这件事根本没人察觉 */
+.pdf-page.on{background:var(--accent-bg); border-radius:6px}
 .pdf-page input{width:22px; height:22px; min-height:22px; margin:4px 0 0;
   accent-color:var(--accent)}
 .pdf-page img{width:62px; border:1px solid var(--rule); border-radius:4px;

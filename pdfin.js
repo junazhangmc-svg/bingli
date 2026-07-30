@@ -190,9 +190,17 @@ function renderPdfPages(r){
        '和「总检结论」那几页有用，封面和须知不用勾 —— 勾多了又慢又贵，' +
        '还会把无关内容混进记录。</p>';
 
+  h += '<div class="row">' +
+    '<button class="btn tiny" onclick="selectSuggested()">帮我勾</button>' +
+    '<button class="btn tiny" onclick="selectAllPages(true)">全选</button>' +
+    '<button class="btn tiny" onclick="selectAllPages(false)">全不选</button>' +
+    '</div>';
+  h += '<p class="tiny-note" id="pdf-count"></p>';
+
   for (var i = 0; i < PDF_PAGES.length; i++) {
     var p = PDF_PAGES[i];
-    h += '<label class="pdf-page" for="pg-' + p.n + '">' +
+    h += '<label class="pdf-page' + (p.sel ? " on" : "") + '" id="pgrow-' + p.n +
+      '" for="pg-' + p.n + '">' +
       '<input type="checkbox" id="pg-' + p.n + '" onchange="togglePage(' + p.n + ')"' +
         (p.sel ? " checked" : "") + '>' +
       '<img src="' + p.thumbUrl + '" alt="第 ' + p.n + ' 页">' +
@@ -206,11 +214,37 @@ function renderPdfPages(r){
   }
 
   h += '<div class="row">' +
-    '<button class="btn solid" onclick="runPdf()">读取勾选的页</button>' +
-    '<button class="btn tiny" onclick="selectSuggested()">帮我勾</button>' +
+    '<button class="btn solid" id="pdf-run" onclick="runPdf()">读取勾选的页</button>' +
     '<button class="btn tiny" onclick="clearPdf();renderShot()">取消</button>' +
     '</div><div id="vis-out"></div></div>';
   box.innerHTML = h;
+  syncPdfCount();
+}
+
+/* 勾选反馈。
+   以前按钮永远写着「读取勾选的页」，勾一页和勾五页看起来一模一样 ——
+   于是多选做了也没人知道，会以为一次只能处理一张。 */
+function syncPdfCount(){
+  var sel = PDF_PAGES.filter(function(p){ return p.sel; });
+  var img = sel.filter(function(p){ return p.kind !== "text"; }).length;
+  var txt = sel.length - img;
+
+  var c = document.getElementById("pdf-count");
+  if (c) {
+    c.innerHTML = sel.length
+      ? "已勾选 <b>" + sel.length + "</b> / " + PDF_PAGES.length + " 页" +
+        (txt ? "　文字层 " + txt + " 页（免费）" : "") +
+        (img ? "　需识别 " + img + " 页（约 " + (img * 20) + " 秒）" : "") +
+        "　—— 可以多选，它们会合并成一条记录"
+      : "还没勾选。<b>可以勾多页</b>，它们会合并成同一条记录。";
+  }
+  var b = document.getElementById("pdf-run");
+  if (b) b.textContent = sel.length ? "读取这 " + sel.length + " 页" : "读取勾选的页";
+
+  for (var i = 0; i < PDF_PAGES.length; i++) {
+    var row = document.getElementById("pgrow-" + PDF_PAGES[i].n);
+    if (row) row.className = "pdf-page" + (PDF_PAGES[i].sel ? " on" : "");
+  }
 }
 
 function togglePage(n){
@@ -219,6 +253,17 @@ function togglePage(n){
       var el = document.getElementById("pg-" + n);
       PDF_PAGES[i].sel = !!(el && el.checked);
     }
+  syncPdfCount();
+}
+
+function selectAllPages(on){
+  for (var i = 0; i < PDF_PAGES.length; i++) {
+    PDF_PAGES[i].sel = !!on;
+    var el = document.getElementById("pg-" + PDF_PAGES[i].n);
+    if (el) el.checked = !!on;
+  }
+  syncPdfCount();
+  if (on) toast("全选了 " + PDF_PAGES.length + " 页 —— 封面和须知建议取消勾选");
 }
 
 /* 按内容猜哪几页有用。只是建议，最终还是你勾。 */
@@ -233,6 +278,7 @@ function selectSuggested(){
     if (el) el.checked = p.sel;
     if (p.sel) n++;
   }
+  syncPdfCount();
   toast(n ? "勾了 " + n + " 页，请自己再过一遍" : "没找到明显相关的页，请手动勾");
 }
 
