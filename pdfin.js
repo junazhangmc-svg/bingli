@@ -38,8 +38,15 @@ function loadPdfLib(){
     PDF_LIB = mod;
     return mod;
   }).catch(function(e){
-    throw new Error("PDF 组件没加载成功。第一次用要下载约 3MB，" +
-                    "网络慢时会失败，可以退出重进再试。（" + (e && e.message || e) + "）");
+    /* 最常见的原因不是网络，而是 pdfjs 那个文件夹压根没上传到服务器 ——
+       它有 188 个文件，很容易在部署时被漏掉。所以第一条就说它。 */
+    throw new Error(
+      "PDF 组件加载失败。按可能性排：\n" +
+      "1. 服务器上缺 pdfjs 文件夹（它有 188 个文件，部署时最容易漏）。" +
+      "在浏览器里打开 " + location.origin + location.pathname.replace(/[^/]*$/, "") +
+      "pdfjs/pdf.mjs 试试，404 就是这个原因。\n" +
+      "2. 第一次用要下载约 3MB，网络慢时会超时，退出重进再试。\n" +
+      "（原始错误：" + (e && e.message || e) + "）");
   });
 }
 

@@ -822,7 +822,11 @@ function saveEntryInner(){
     }
     return saved;
   }).then(function(saved){
-    EDIT_ID = null; VIS_DRAFT = null; DRAFT = null;
+    /* 曾经这里还有一句 DRAFT = null —— 那是早期设计的残留变量名，
+       改叫 VIS_DRAFT 之后漏删了。严格模式下给未声明的变量赋值会抛
+       ReferenceError，而它正好在存盘成功之后执行，于是表现成
+       「提示保存失败，但数据其实存上了」。 */
+    EDIT_ID = null; VIS_DRAFT = null;
     if (typeof clearShot === "function") clearShot();
     toast(old ? "已保存修改" : "已保存");
     /* 到这里数据已经落盘了。后面只是刷新界面和跳转，
