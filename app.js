@@ -12,6 +12,7 @@
 var VIEW = "home";
 var ST = { records: [], diseases: [], meds: [], targets: {}, ready: false };
 var EDIT_ID = null;      // 正在编辑的记录 id；null 表示新建
+var BACKFILL = null;     // 本次启动时字典回补的结果
 
 /* 录入页的分类快捷键。16 个分类全列出来按钮太多，按化验单类型归成 6 组。 */
 var SCOPES = {
@@ -49,10 +50,18 @@ function disName(id){ var d = disById(id); return d ? d.name : id; }
 function boot(){
   openDB()
     .then(seedOnce)
-    .then(reload)
+    /* 字典升级后回补老记录。不做这一步，扩字典就只对以后新拍的有用，
+       历史记录永远停在「未识别」。 */
+    .then(function(){ return backfillDict().catch(function(e){
+      if (window.console) console.error("backfill", e);
+      return { ran:false, records:0, items:0 };
+    }); })
+    .then(function(res){ BACKFILL = res; return reload(); })
     .then(function(){
       ST.ready = true;
       render();
+      if (BACKFILL && BACKFILL.items)
+        toast("字典更新，认出了 " + BACKFILL.items + " 个以前不认识的项目");
       requestPersist();          // 已安装的 PWA 通常会被批准，但不保证
     })
     .catch(function(e){
@@ -971,7 +980,12 @@ function unmappedSummary(){
       (e.refText ? '<div class="v-t">报告参考范围 ' + escapeHtml(e.refText) + '</div>' : '<div></div>') +
       '</div>';
   }
-  h += '<div class="row"><button class="btn" onclick="copyUnmapped()">复制这份清单</button></div>';
+  h += '<div class="row">' +
+       '<button class="btn" onclick="copyUnmapped()">复制这份清单</button>' +
+       '<button class="btn" onclick="rerunBackfill()">重新匹配一次</button>' +
+       '</div>';
+  h += '<p class="tiny-note">字典升级后会自动重新匹配一次历史记录。' +
+       '上面这个按钮是手动重跑 —— 只做加法，认出来的补上，认不出的原样留着。</p>';
   h += '<details class="fold"><summary>为什么不干脆抄一份通用参考区间表</summary>' +
     '<p class="tiny-note">中国的检验参考区间是<b>按实验室定</b>的 —— 同一个项目，' +
     '不同医院、不同仪器、不同检测方法，范围能差出一截。' +
@@ -982,6 +996,19 @@ function unmappedSummary(){
     '注意区分：参考区间是「健康人群的范围」，治疗目标是「你这个病该控到多少」，' +
     '两者不是一回事 —— 后者在「个人目标」里单独设。</p></details>';
   return h + '</div>';
+}
+
+/* 手动重跑。清掉版本标记再走一遍同一条路径 —— 不另写一套逻辑，
+   免得手动和自动两条路行为不一致。 */
+function rerunBackfill(){
+  metaSet("dictVersion", "").then(backfillDict).then(function(res){
+    return refresh().then(function(){
+      toast(res.items ? "认出了 " + res.items + " 个项目（涉及 " + res.records + " 条记录）"
+                      : "重新匹配完毕，没有新认出来的项目");
+    });
+  }).catch(function(e){
+    toast("重新匹配失败：" + (e && e.message || e));
+  });
 }
 
 function copyUnmapped(){
