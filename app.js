@@ -581,11 +581,17 @@ function renderEntry(draft){
           'onchange="onPhoto(event)">' +
         '<input type="file" id="shot-input" accept="image/*" hidden ' +
           'onchange="onPhoto(event)">' +
+        '<input type="file" id="pdf-input" accept="application/pdf,.pdf" hidden ' +
+          'onchange="onPdf(event)">' +
         (vlReady()
           ? '<div class="row">' +
               '<button class="btn" onclick="takePhoto()">拍照</button>' +
               '<button class="btn" onclick="pickPhoto()">从相册选</button>' +
-            '</div>'
+              '<button class="btn" onclick="pickPdf()">选 PDF</button>' +
+            '</div>' +
+            '<p class="tiny-note">体检报告 PDF 直接选进来 —— ' +
+            '医院导出的 PDF 大多带文字层，能逐字读取，比拍照准得多，' +
+            '而且不消耗识别次数。</p>'
           : '<div class="row"><button class="btn tiny" onclick="go(\'more\')">去配置</button></div>') +
         '<div id="shot-box"></div></div>';
     }

@@ -284,7 +284,19 @@ details.hrec[open] .h-prev{display:none}
   a[href]::after{content:""}
   /* 屏幕上靠颜色区分的异常，在黑白纸上必须靠箭头和字重 */
   .p-abn{font-weight:700; text-decoration:underline}
+  .pdf-page{display:none !important}
 }
+
+/* PDF 页面勾选。整行可点 —— 手机上只点复选框太难命中 */
+.pdf-page{display:grid; grid-template-columns:28px 62px 1fr; gap:10px;
+  align-items:start; padding:10px 2px; border-bottom:1px solid var(--rule-soft);
+  cursor:pointer; min-height:56px}
+.pdf-page:last-of-type{border-bottom:none}
+.pdf-page input{width:22px; height:22px; min-height:22px; margin:4px 0 0;
+  accent-color:var(--accent)}
+.pdf-page img{width:62px; border:1px solid var(--rule); border-radius:4px;
+  display:block; background:#fff}
+.pdf-page .tiny-note{margin:2px 0 0}
 </style>
 </head>
 <body>
@@ -320,6 +332,7 @@ details.hrec[open] .h-prev{display:none}
 <script src="store.js"></script>
 <script src="ai.js"></script>
 <script src="vision.js"></script>
+<script src="pdfin.js"></script>
 <script src="print.js"></script>
 <script src="app.js"></script>
 <script>

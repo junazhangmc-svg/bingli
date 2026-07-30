@@ -588,6 +588,21 @@ function visionWarnBlock(d){
       '<button class="btn tiny" onclick="takePhoto()">重拍</button>' +
       '<button class="btn tiny" onclick="pickPhoto()">换一张</button>' +
       '</div>';
+  } else if (d._pdf) {
+    /* PDF 来源要说清楚走的哪条路 —— 文字层是逐字抠出来的，
+       和视觉识别的可信度不是一个量级，人该知道自己在核对什么。 */
+    h += '<h3>读取完了，请核对</h3>';
+    h += '<p class="tiny-note">来自 <b>' + escapeHtml(d._pdf.name) + '</b> 的第 ' +
+         d._pdf.pages.join("、") + ' 页。';
+    if (d._pdf.fromText && !d._pdf.fromImage)
+      h += '全部走的<b>文字层直读</b>，逐字精确、没有识别误差，' +
+           '但排版可能错乱，主要核对「项目名和数值有没有配错对」。';
+    else if (d._pdf.fromText)
+      h += '其中 ' + d._pdf.fromText + ' 页走文字层直读（精确），' +
+           d._pdf.fromImage + ' 页走图片识别（可能串行，要重点核对）。';
+    else
+      h += '全部走的<b>图片识别</b>，和拍照一样可能串行，请逐项对照原文。';
+    h += '</p>';
   } else {
     h += '<h3>识别完了，但必须逐项核对</h3>';
     if (!d.obs.length) {

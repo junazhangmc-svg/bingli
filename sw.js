@@ -9,11 +9,18 @@
  * 「新的 app.js 配旧的 store.js」这种半更新状态 —— 对存数据的应用来说
  * 这是最坏的失败模式。所以程序文件一律 network-first，图标才用 cache-first。
  * ========================================================================== */
-const VERSION = "bl-v14";
+const VERSION = "bl-v15";
+
+/* pdf.js 那 5MB 单独放一个不随版本变的缓存。
+   放进 VERSION 缓存的话，每次改一行 app.js 都会把它一起清掉重下 ——
+   在医院网络下等于每次更新都罚你三分钟。它是外部库，只有换版本时才变，
+   届时改这个名字即可。 */
+const VENDOR_CACHE = "bl-vendor-pdfjs-6.2.108";
 
 const ASSETS = [
   "./", "./index.html", "./manifest.json",
-  "./data.js", "./core.js", "./store.js", "./ai.js", "./vision.js", "./print.js", "./app.js",
+  "./data.js", "./core.js", "./store.js", "./ai.js", "./vision.js",
+  "./pdfin.js", "./print.js", "./app.js",
   "./icon-192.png", "./icon-512.png", "./icon-maskable.png"
 ];
 
@@ -29,7 +36,9 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      /* 清旧缓存时放过 vendor —— 它不该跟着应用版本走 */
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== VERSION && k !== VENDOR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -41,6 +50,23 @@ self.addEventListener("fetch", (e) => {
   /* 跨域和非 GET 一律放行，不拦不缓存。
      这一段是各家大模型 API 调用不被打断的原因，改动前想清楚。 */
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
+
+  /* 外部库：cache-first，且存进不随版本变的 vendor 缓存。
+     必须排在 isProgram 判断之前 —— pdf.mjs 结尾是 .mjs 不是 .js，
+     但 cmaps 里有 .bcmap，将来若换成 .js 结尾的构建也不该被当成程序文件。 */
+  if (url.pathname.indexOf("/pdfjs/") >= 0) {
+    e.respondWith(
+      caches.match(req, { cacheName: VENDOR_CACHE }).then((hit) => hit ||
+        fetch(req).then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(VENDOR_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        }))
+    );
+    return;
+  }
 
   const isProgram = req.mode === "navigate" ||
                     /\.(html|js|json)$/.test(url.pathname) ||
