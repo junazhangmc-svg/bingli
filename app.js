@@ -562,7 +562,9 @@ function renderEntry(draft){
   function val(k){ return base[k] == null ? "" : base[k]; }
   var scope = entryScope();
 
-  var h = '<h2 class="sec">' + (r ? "编辑记录" : "新建记录") + '</h2>';
+  /* 保存出错时的落点。放在最上面，出错了一眼就能看到 */
+  var h = '<div id="save-err"></div>';
+  h += '<h2 class="sec">' + (r ? "编辑记录" : "新建记录") + '</h2>';
 
   /* 拍照识别只在新建时给，编辑已有记录时不该再拍一张覆盖掉 */
   if (!r && typeof vlSettingsBlock === "function") {
@@ -711,14 +713,44 @@ function updateSug(){
     : "";
 }
 
+/* 保存出的错必须能看清、能复制。
+   toast 两秒多就没了，出错时人既读不完也抄不下来 —— 而这正是最需要
+   把原文发出来排查的时候。所以错误走常驻卡片，不走 toast。 */
+var LAST_SAVE_ERR = "";
+
+function showSaveError(where, e){
+  LAST_SAVE_ERR = "【" + where + "】\n" +
+    (e && e.stack ? e.stack : (e && e.message ? e.message : String(e)));
+  if (window.console) console.error(where, e);
+  var box = document.getElementById("save-err");
+  if (!box) { toast(where + "：" + (e && e.message || e)); return; }
+  box.innerHTML = '<div class="card flag-bad"><h3>' + escapeHtml(where) + '</h3>' +
+    '<p class="tiny-note">' + escapeHtml(e && e.message ? e.message : String(e)) + '</p>' +
+    '<div class="row">' +
+      '<button class="btn tiny" onclick="copySaveErr()">复制错误信息</button>' +
+      '<button class="btn tiny" onclick="clearSaveError()">知道了</button>' +
+    '</div></div>';
+  box.scrollIntoView({ block:"start" });
+}
+function clearSaveError(){
+  var box = document.getElementById("save-err");
+  if (box) box.innerHTML = "";
+}
+function copySaveErr(){
+  if (!LAST_SAVE_ERR) return;
+  if (navigator.clipboard && window.isSecureContext)
+    navigator.clipboard.writeText(LAST_SAVE_ERR).then(
+      function(){ toast("已复制，发给开发者"); },
+      function(){ toast("复制失败，请长按选择上面的文字"); });
+  else toast("复制失败，请长按选择上面的文字");
+}
+
 /* 保存按钮点了没反应，是最难查的一类问题 —— 同步异常会静默吞掉整个动作，
-   人只会觉得「按钮坏了」。这里统一兜住，任何异常都变成看得见的提示。 */
+   人只会觉得「按钮坏了」。这里统一兜住。 */
 function saveEntry(){
+  clearSaveError();
   try { saveEntryInner(); }
-  catch (e) {
-    toast("保存时出错：" + (e && e.message || e));
-    if (window.console) console.error("saveEntry", e);
-  }
+  catch (e) { showSaveError("保存时出错", e); }
 }
 
 function saveEntryInner(){
@@ -777,7 +809,7 @@ function saveEntryInner(){
      以前整条链共用一个 catch，结果存盘明明成功了，
      后面刷新或跳转出一点问题就报「保存失败」—— 说了假话，还会让人重存一遍。 */
   saveRecord(rec).catch(function(e){
-    toast("保存失败：" + (e && e.message || e));
+    showSaveError("保存失败（数据没有存下）", e);
     throw { _handled: true };
   }).then(function(saved){
     /* 照片跟着记录一起存。存不下（配额满了）也不能让整条记录白填，
@@ -797,13 +829,12 @@ function saveEntryInner(){
        出问题也绝不能说成「保存失败」。 */
     return refresh().then(function(){ openRec(saved.id); })
       .catch(function(e){
-        toast("已保存，但页面没刷新出来，回列表看一下");
-        if (window.console) console.error("post-save render failed", e);
+        /* 数据已经落盘了，这里只是界面没刷出来 —— 措辞不能让人以为白填了 */
+        showSaveError("已保存，但页面没刷新出来（数据是好的，回列表能看到）", e);
       });
   }).catch(function(e){
     if (e && e._handled) return;
-    toast("出错了：" + (e && e.message || e));
-    if (window.console) console.error(e);
+    showSaveError("出错了", e);
   });
 }
 
