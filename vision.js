@@ -603,6 +603,14 @@ function visionWarnBlock(d){
     else
       h += '全部走的<b>图片识别</b>，和拍照一样可能串行，请逐项对照原文。';
     h += '</p>';
+    /* 部分失败时必须明说 —— 否则人会以为拿到的是完整数据，
+       而实际上缺了几页，还浑然不知。 */
+    if (d._pdf.failed && d._pdf.failed.length) {
+      h += '<p class="tiny-note"><b>有 ' + d._pdf.failed.length + ' 部分没读成功，' +
+           '下面的内容是不完整的：</b><br>' +
+           d._pdf.failed.map(function(s){ return "· " + escapeHtml(s); }).join("<br>") +
+           '<br>可以先存下已读出的部分，之后再单独补那几页。</p>';
+    }
   } else {
     h += '<h3>识别完了，但必须逐项核对</h3>';
     if (!d.obs.length) {

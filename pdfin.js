@@ -307,34 +307,53 @@ function runPdf(){
     var joined = textPages.map(function(p){
       return "【第 " + p.n + " 页】\n" + p.text;
     }).join("\n\n");
-    work.push(callVisionText(joined));
+    work.push({ label: "文字层（第 " + textPages.map(function(p){ return p.n; }).join("、") + " 页）",
+                run: callVisionText(joined) });
   }
   imgPages.forEach(function(p){
-    work.push(pageToDataUrl(p).then(function(u){ return callVision(u, ST.diseases); }));
+    work.push({ label: "第 " + p.n + " 页（图片识别）",
+                run: pageToDataUrl(p).then(function(u){ return callVision(u, ST.diseases); }) });
   });
 
-  Promise.all(work).then(function(results){
+  /* 每个任务各自兜住失败。
+     以前用 Promise.all，一页出错就把整批结果全丢掉 —— 勾了 5 页、
+     4 页都成功了也白算，还得从头再来一遍（并且再花一次钱）。
+     现在部分成功也照样交出来，失败的单独列出来让人决定要不要重试。 */
+  Promise.all(work.map(function(w){
+    return w.run.then(function(r){ return { ok:true, r:r, label:w.label }; },
+                      function(e){ return { ok:false, e:e, label:w.label }; });
+  })).then(function(settled){
     vlBusy = false;
-    var merged = mergeDrafts(results.map(function(r){
-      return draftFromVision(r.data, ST.diseases);
+    var okList = settled.filter(function(s){ return s.ok; });
+    var bad    = settled.filter(function(s){ return !s.ok; });
+
+    if (!okList.length) {
+      out.innerHTML = '<div class="card flag-bad"><h3>处理失败</h3>' +
+        bad.map(function(s){
+          return '<p class="tiny-note"><b>' + escapeHtml(s.label) + '</b><br>' +
+                 escapeHtml(s.e && s.e.message || s.e).replace(/\n/g, "<br>") + '</p>';
+        }).join("") +
+        '<p class="tiny-note">PDF 还在，可以重试或改勾别的页。</p>' +
+        '<div class="row"><button class="btn tiny" onclick="runPdf()">重试</button></div></div>';
+      return;
+    }
+
+    var merged = mergeDrafts(okList.map(function(s){
+      return draftFromVision(s.r.data, ST.diseases);
     }));
-    merged._model = results[0] && results[0].model;
-    merged._meta  = results[0] && results[0].meta;
+    merged._model = okList[0].r.model;
+    merged._meta  = okList[0].r.meta;
     merged._pdf   = { name: PDF_NAME, pages: sel.map(function(p){ return p.n; }),
-                      fromText: textPages.length, fromImage: imgPages.length };
+                      fromText: textPages.length, fromImage: imgPages.length,
+                      failed: bad.map(function(s){
+                        return s.label + "：" + (s.e && s.e.message || s.e); }) };
     VIS_DRAFT = merged;
     renderEntry(visionToForm(merged));
     setTimeout(function(){
       var w = document.getElementById("vis-warn");
       if (w) w.scrollIntoView({ block:"start" });
     }, 0);
-    toast("读取完成，请核对");
-  }).catch(function(e){
-    vlBusy = false;
-    out.innerHTML = '<div class="card flag-bad"><h3>处理失败</h3>' +
-      '<p class="tiny-note">' + escapeHtml(e && e.message || e) + '</p>' +
-      '<p class="tiny-note">PDF 还在，可以重试或改勾别的页。</p>' +
-      '<div class="row"><button class="btn tiny" onclick="runPdf()">重试</button></div></div>';
+    toast(bad.length ? "有 " + bad.length + " 部分没成功，其余已读出" : "读取完成，请核对");
   });
 }
 
@@ -380,26 +399,34 @@ function mergeDrafts(list){
 }
 
 /* 文字路径：同一个模型、同一套提示词，只是把图片换成文本。 */
-function callVisionText(text){
+var PDF_TEXT_MAX = 24000;
+
+function callVisionText(text, temp){
   var p = vlProvider(), key = lsGet(LS.vlKey);
   if (!p) return Promise.reject(new Error("还没选识别服务"));
   if (!key) return Promise.reject(new Error("还没填识别服务的密钥"));
+  if (temp == null) temp = 0;
 
   var ctl = new AbortController();
   var timer = setTimeout(function(){ ctl.abort(); }, VL_TIMEOUT);
-  var MAX = 24000;
-  if (text.length > MAX) text = text.slice(0, MAX) + "\n（后续内容因长度限制被截断）";
+  var cut = false;
+  if (text.length > PDF_TEXT_MAX) {
+    text = text.slice(0, PDF_TEXT_MAX) + "\n（后续内容因长度限制被截断）";
+    cut = true;
+  }
+
+  var body = JSON.stringify({
+    model: vlModel(), temperature: temp, max_tokens: (p.maxTokens || 4000),
+    messages: [{ role:"user", content:
+      visionPrompt(ST.diseases) +
+      "\n\n下面是从 PDF 文字层里原样抠出来的内容（不是图片，不需要识别，" +
+      "但排版可能错乱，同一行的内容可能被拆开）：\n\n" + text }]
+  });
 
   return fetch(p.url, {
     method: "POST",
     headers: { "Content-Type":"application/json", "Authorization":"Bearer " + key },
-    body: JSON.stringify({
-      model: vlModel(), temperature: 0, max_tokens: (p.maxTokens || 4000),
-      messages: [{ role:"user", content:
-        visionPrompt(ST.diseases) +
-        "\n\n下面是从 PDF 文字层里原样抠出来的内容（不是图片，不需要识别，" +
-        "但排版可能错乱，同一行的内容可能被拆开）：\n\n" + text }]
-    }),
+    body: body,
     signal: ctl.signal
   }).then(function(res){
     clearTimeout(timer);
@@ -407,19 +434,36 @@ function callVisionText(text){
       var data = null;
       try { data = JSON.parse(txt); } catch(e){}
       if (!res.ok) {
-        if (/temperature/i.test(txt)) throw new Error("模型参数不接受，请重试");
+        /* 参数被拒就换 temperature=1 重来 —— 图片路径也是这么处理的，
+           这里以前漏了，会把「参数不合规」报成一句没法处理的话。 */
+        if (/temperature/i.test(txt) && temp !== 1) return callVisionText(text, 1);
+        if (res.status === 401) throw new Error("密钥无效，去「更多 → 拍照识别」重填");
+        if (res.status === 413 || /too large|payload/i.test(txt))
+          throw new Error("这次发过去的文字太多（" + Math.round(body.length / 1024) +
+                          " KB），少勾几页再试");
         throw new Error((data && data.error && data.error.message) || ("服务返回 " + res.status));
       }
       var ch = data && data.choices && data.choices[0];
       var content = ch && ch.message && ch.message.content;
       if (!content) throw new Error("服务返回内容为空");
-      return { data: parseJsonLoose(content), model: (data && data.model) || vlModel(),
-               meta: { raw: content, model: (data && data.model) || vlModel(),
-                       finish: ch.finish_reason || "", usage: (data && data.usage) || null } };
+      var out = { data: parseJsonLoose(content), model: (data && data.model) || vlModel(),
+                  meta: { raw: content, model: (data && data.model) || vlModel(),
+                          finish: ch.finish_reason || "", usage: (data && data.usage) || null,
+                          truncated: cut, bytes: body.length } };
+      return out;
     });
   }).catch(function(e){
     clearTimeout(timer);
-    if (e.name === "AbortError") throw new Error("处理超时，可以少勾几页再试");
+    if (e.name === "AbortError")
+      throw new Error("处理超时（超过 " + Math.round(VL_TIMEOUT / 1000) + " 秒）。少勾几页再试。");
+    /* 以前这里直接 throw e，于是界面上出现的是浏览器的原文「Failed to fetch」——
+       一句既看不懂也不知道该干什么的话。图片路径本来就有这段处理，文字路径漏了。 */
+    if (e instanceof TypeError)
+      throw new Error(
+        "连不上识别服务（本次要发送约 " + Math.round(body.length / 1024) + " KB 文字）。\n" +
+        "1. 检查手机是否联网。\n" +
+        "2. 勾的页数多时请求会很大，有的网络会掐掉大请求 —— 少勾几页再试。\n" +
+        "3. 若刚换过服务商，去探针页确认它允许网页直连。");
     throw e;
   });
 }
