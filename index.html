@@ -194,6 +194,16 @@ select{background-image:none}
 .v-v{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15.5px; text-align:right}
 .v-t{font-size:12.5px; color:var(--ink-faint); font-family:var(--mono)}
 .v-note{grid-column:1 / -1; font-size:12.5px; color:var(--ink-faint); margin-top:2px}
+/* 「偏高/偏低的常见原因」折叠块。默认收起 —— 一屏十几项都摊开就没法看了，
+   而且这些是背景知识不是结论，不该跟数值抢注意力。 */
+.v-why{grid-column:1 / -1; margin-top:4px}
+.v-why>summary{font-size:12.5px; color:var(--accent); cursor:pointer;
+               list-style:none; padding:2px 0}
+.v-why>summary::-webkit-details-marker{display:none}
+.v-why>summary::before{content:"？ "; font-family:var(--mono)}
+.v-why ul{margin:4px 0 2px; padding-left:18px}
+.v-why li{font-size:12.5px; color:var(--ink-soft); margin:2px 0; line-height:1.5}
+.v-why .v-dept{font-size:12.5px; color:var(--ink-faint); margin:4px 0 0}
 .v-trend{font-size:12.5px; color:var(--ink-soft); font-family:var(--mono); margin-left:6px}
 .grp-title{font-family:var(--serif); font-size:14.5px; color:var(--accent);
            margin:14px 0 2px; letter-spacing:.5px}

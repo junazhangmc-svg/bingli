@@ -244,13 +244,16 @@ function judge(ind, v){
   if (!isFinite(x)) return null;
   var hi = ind.max, lo = ind.min, hard = ind.hard;
   if (hi == null && lo == null) return null;
-  var lv = "good";
+  var lv = "good", dir = null;
   if (hi != null && x > hi) {
+    dir = "hi";
     if (hard != null) lv = x > hard ? "bad" : "warn";
     else lv = x > hi * 1.15 ? "bad" : "warn";
   }
-  if (lo != null && x < lo) lv = x < lo * 0.85 ? "bad" : "warn";
-  return { lv: lv, txt: String(parseFloat(v)) };
+  if (lo != null && x < lo) { dir = "lo"; lv = x < lo * 0.85 ? "bad" : "warn"; }
+  /* dir 供「偏高/偏低的常见原因」查表用，达标时是 null。
+     它和 lv 不是一回事：lv 说偏得多严重，dir 说往哪边偏。 */
+  return { lv: lv, dir: dir, txt: String(parseFloat(v)) };
 }
 
 /* 把个人目标覆盖在字典条目上。targets 形如 {lipid_ldl_c:{max:1.8,t:"< 1.8",w:"…"}} */

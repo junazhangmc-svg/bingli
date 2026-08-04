@@ -342,11 +342,33 @@ function verdictRows(r){
              (it.t ? '<div class="v-t">目标 ' + escapeHtml(it.t) +
                      (it._custom ? '（个人）' : '') + '</div>' : '<div></div>') +
              (it.w ? '<div class="v-note">' + escapeHtml(it.w) + '</div>' : "") +
+             whyBlock(it, ju) +
            '</div>';
     }
   }
   h += unmappedRows(r);
   return h;
+}
+
+/* 「为什么会偏高/偏低」—— 只在真的偏了、且字典里写了对应方向时才出现。
+ *
+ * 三条刻意的约束：
+ *   达标就什么都不显示 —— 没偏的时候摆一堆病名，只会制造焦虑。
+ *   方向必须对上：judge 说偏高就只给 hi，绝不把 lo 一起倒出来。
+ *   默认收起，措辞是「常见原因」不是诊断。这些是让你去问医生时问得更准，
+ *   不是让你自己下结论。 */
+function whyBlock(it, ju){
+  if (!it || !ju || !ju.dir) return "";
+  var list = it[ju.dir];
+  if (!list || !list.length) return "";
+  var h = '<details class="v-why"><summary>' +
+          (ju.dir === "hi" ? "偏高" : "偏低") + '的常见原因</summary><ul>';
+  for (var i = 0; i < list.length; i++) h += '<li>' + escapeHtml(list[i]) + '</li>';
+  h += '</ul>';
+  if (it.dept && it.dept.length)
+    h += '<p class="v-dept">要看的话通常挂：' + escapeHtml(it.dept.join(" / ")) + '</p>';
+  h += '<p class="v-dept">以上是常见原因，不是诊断，请以医生判断为准。</p>';
+  return h + '</details>';
 }
 
 /* 字典外的项目。存下来了却不显示，等于没存 —— 打印给医生时它们同样要在。 */
